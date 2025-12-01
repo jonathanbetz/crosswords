@@ -1,0 +1,198 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #333;
+  background: #fff;
+}
+
+.container {
+  width: 380px;
+  max-height: 500px;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+header {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+header h1 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.status {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #f5f5f5;
+  border-radius: 6px;
+  color: #666;
+}
+
+.btn {
+  display: inline-block;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn.primary {
+  width: 100%;
+  background: #326891;
+  color: white;
+}
+
+.btn.primary:hover {
+  background: #254d6b;
+}
+
+.btn.primary:disabled {
+  background: #999;
+  cursor: not-allowed;
+}
+
+.btn.secondary {
+  background: #e0e0e0;
+  color: #333;
+}
+
+.btn.secondary:hover {
+  background: #d0d0d0;
+}
+
+.results {
+  margin-top: 16px;
+}
+
+.results.hidden,
+.error.hidden {
+  display: none;
+}
+
+.summary {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #e8f4e8;
+  border-radius: 6px;
+  font-weight: 500;
+  color: #2d6a2d;
+  text-align: center;
+}
+
+.puzzle-date {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.puzzle-date span {
+  font-weight: 600;
+  color: #326891;
+}
+
+.clue-section {
+  margin-bottom: 16px;
+}
+
+.clue-section h2 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.clue-list {
+  list-style: none;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.clue-list li {
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.clue-list li:last-child {
+  border-bottom: none;
+}
+
+.clue-number {
+  display: inline-block;
+  min-width: 28px;
+  font-weight: 600;
+  color: #326891;
+}
+
+.clue-text {
+  color: #333;
+}
+
+.clue-pattern {
+  display: block;
+  margin-top: 4px;
+  font-family: 'Courier New', Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: #326891;
+  letter-spacing: 2px;
+  background: #f0f4f8;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.actions {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  gap: 8px;
+}
+
+.actions .btn {
+  flex: 1;
+}
+
+.error {
+  margin-top: 16px;
+  padding: 12px;
+  background: #fde8e8;
+  border-radius: 6px;
+  color: #c53030;
+}
+
+.loading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.loading .btn.primary::after {
+  content: '...';
+}
+
+/* Empty state */
+.clue-list:empty::after {
+  content: 'All clues answered!';
+  display: block;
+  padding: 12px;
+  color: #666;
+  font-style: italic;
+  text-align: center;
+}

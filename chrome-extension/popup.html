@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crossword Trainer</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Crossword Trainer</h1>
+    </header>
+
+    <div id="status" class="status">
+      <p>Click "Extract Clues" to find unanswered clues.</p>
+    </div>
+
+    <button id="extractBtn" class="btn primary">Extract Clues</button>
+
+    <div id="results" class="results hidden">
+      <div class="summary">
+        <div class="puzzle-date">Puzzle: <span id="puzzleDate"></span></div>
+        <span id="clueCount">0</span> unanswered clues found
+      </div>
+
+      <div class="clue-section">
+        <h2>Across</h2>
+        <ul id="acrossClues" class="clue-list"></ul>
+      </div>
+
+      <div class="clue-section">
+        <h2>Down</h2>
+        <ul id="downClues" class="clue-list"></ul>
+      </div>
+
+      <div class="actions">
+        <button id="saveBtn" class="btn primary">Save to Server</button>
+        <button id="copyBtn" class="btn secondary">Copy to Clipboard</button>
+      </div>
+    </div>
+
+    <div id="error" class="error hidden">
+      <p id="errorMessage"></p>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

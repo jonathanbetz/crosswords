@@ -1,0 +1,12 @@
+{
+  "name": "crossword-trainer-backend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {
+    "@vercel/kv": "^2.0.0"
+  }
+}
