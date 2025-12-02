@@ -161,6 +161,13 @@
     .save-status.error {
       color: #f44336;
     }
+    .save-status.incomplete {
+      color: #ff9800;
+    }
+    .answer-input.incomplete {
+      border-color: #ff9800;
+      background: #fff8e1;
+    }
     .empty-state {
       text-align: center;
       padding: 60px 20px;
@@ -289,6 +296,7 @@
       const pattern = clue.pattern ? `<span class="clue-pattern">${escapeHtml(clue.pattern)}</span>` : '';
       const clueId = `${clue.direction}-${clue.number}`;
       const hasAnswer = clue.answer && clue.answer.trim();
+      const expectedLength = clue.pattern ? clue.pattern.length : 0;
 
       return `
         <li class="clue-item" data-clue-id="${clueId}">
@@ -301,10 +309,12 @@
             <input
               type="text"
               class="answer-input ${hasAnswer ? 'saved' : ''}"
-              placeholder="Answer..."
+              placeholder="${expectedLength ? expectedLength + ' letters' : 'Answer...'}"
               value="${hasAnswer ? escapeHtml(clue.answer) : ''}"
               data-clue-id="${clueId}"
               data-puzzle-date="${puzzleDate}"
+              data-expected-length="${expectedLength}"
+              ${expectedLength ? `maxlength="${expectedLength}"` : ''}
             >
             <span class="save-status" data-status-for="${clueId}"></span>
           </div>
@@ -316,8 +326,19 @@
       const clueId = input.dataset.clueId;
       const puzzleDate = input.dataset.puzzleDate;
       const answer = input.value.trim().toUpperCase();
+      const expectedLength = parseInt(input.dataset.expectedLength) || 0;
       const statusEl = document.querySelector(`[data-status-for="${clueId}"]`);
 
+      // Check length matches (if we have an expected length)
+      if (expectedLength && answer.length > 0 && answer.length !== expectedLength) {
+        statusEl.textContent = `${answer.length}/${expectedLength}`;
+        statusEl.className = 'save-status incomplete';
+        input.classList.remove('saved');
+        input.classList.add('incomplete');
+        return;
+      }
+
+      input.classList.remove('incomplete');
       statusEl.textContent = 'Saving...';
       statusEl.className = 'save-status saving';
 
