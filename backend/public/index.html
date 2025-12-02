@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Saved Crossword Clues</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+      color: #333;
+    }
+    h1 {
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+    }
+    .date-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 30px;
+    }
+    .date-btn {
+      padding: 8px 16px;
+      border: 1px solid #ddd;
+      background: white;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    .date-btn:hover {
+      border-color: #007bff;
+      color: #007bff;
+    }
+    .date-btn.active {
+      background: #007bff;
+      color: white;
+      border-color: #007bff;
+    }
+    .clues-container {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .clues-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid #eee;
+    }
+    .clues-header h2 {
+      margin: 0;
+    }
+    .clue-count {
+      color: #666;
+      font-size: 14px;
+    }
+    .clues-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+    }
+    @media (max-width: 600px) {
+      .clues-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .clue-section h3 {
+      margin: 0 0 15px 0;
+      color: #007bff;
+      font-size: 16px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .clue-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .clue-item {
+      padding: 10px 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .clue-item:last-child {
+      border-bottom: none;
+    }
+    .clue-number {
+      font-weight: bold;
+      color: #007bff;
+      margin-right: 8px;
+    }
+    .clue-text {
+      color: #333;
+    }
+    .clue-pattern {
+      display: inline-block;
+      margin-left: 10px;
+      padding: 2px 8px;
+      background: #f0f0f0;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+      color: #666;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #666;
+    }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+    .error {
+      background: #fee;
+      color: #c00;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Saved Crossword Clues</h1>
+  <p class="subtitle">Your unanswered clues for practice</p>
+
+  <div id="dates" class="date-list">
+    <span class="loading">Loading dates...</span>
+  </div>
+
+  <div id="clues" class="clues-container">
+    <div class="empty-state">Select a puzzle date above to view clues</div>
+  </div>
+
+  <script>
+    const API_BASE = '';  // Same origin
+
+    async function loadDates() {
+      try {
+        const res = await fetch(`${API_BASE}/api/clues`);
+        const data = await res.json();
+
+        const container = document.getElementById('dates');
+
+        if (!data.dates || data.dates.length === 0) {
+          container.innerHTML = '<span class="empty-state">No saved puzzles yet</span>';
+          return;
+        }
+
+        container.innerHTML = data.dates.map(date =>
+          `<button class="date-btn" data-date="${date}">${formatDate(date)}</button>`
+        ).join('');
+
+        // Add click handlers
+        container.querySelectorAll('.date-btn').forEach(btn => {
+          btn.addEventListener('click', () => loadClues(btn.dataset.date));
+        });
+
+        // Load the most recent by default
+        loadClues(data.dates[0]);
+      } catch (err) {
+        document.getElementById('dates').innerHTML =
+          `<div class="error">Failed to load dates: ${err.message}</div>`;
+      }
+    }
+
+    async function loadClues(date) {
+      // Update active button
+      document.querySelectorAll('.date-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.date === date);
+      });
+
+      const container = document.getElementById('clues');
+      container.innerHTML = '<div class="loading">Loading clues...</div>';
+
+      try {
+        const res = await fetch(`${API_BASE}/api/clues?date=${date}`);
+        const data = await res.json();
+
+        if (!data.clues || data.clues.length === 0) {
+          container.innerHTML = '<div class="empty-state">No clues saved for this puzzle</div>';
+          return;
+        }
+
+        const across = data.clues.filter(c => c.direction === 'across');
+        const down = data.clues.filter(c => c.direction === 'down');
+
+        container.innerHTML = `
+          <div class="clues-header">
+            <h2>${formatDate(date)}</h2>
+            <span class="clue-count">${data.clues.length} clues</span>
+          </div>
+          <div class="clues-grid">
+            <div class="clue-section">
+              <h3>Across</h3>
+              <ul class="clue-list">
+                ${across.map(clue => renderClue(clue)).join('')}
+                ${across.length === 0 ? '<li class="clue-item">No across clues</li>' : ''}
+              </ul>
+            </div>
+            <div class="clue-section">
+              <h3>Down</h3>
+              <ul class="clue-list">
+                ${down.map(clue => renderClue(clue)).join('')}
+                ${down.length === 0 ? '<li class="clue-item">No down clues</li>' : ''}
+              </ul>
+            </div>
+          </div>
+        `;
+      } catch (err) {
+        container.innerHTML = `<div class="error">Failed to load clues: ${err.message}</div>`;
+      }
+    }
+
+    function renderClue(clue) {
+      const pattern = clue.pattern ? `<span class="clue-pattern">${escapeHtml(clue.pattern)}</span>` : '';
+      return `
+        <li class="clue-item">
+          <span class="clue-number">${clue.number}.</span>
+          <span class="clue-text">${escapeHtml(clue.text)}</span>
+          ${pattern}
+        </li>
+      `;
+    }
+
+    function formatDate(dateStr) {
+      const date = new Date(dateStr + 'T00:00:00');
+      return date.toLocaleDateString('en-US', {
+        weekday: 'short',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Load on page ready
+    loadDates();
+  </script>
+</body>
+</html>
