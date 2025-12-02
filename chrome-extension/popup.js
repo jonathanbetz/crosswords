@@ -1,6 +1,6 @@
 // Popup script for Crossword Trainer extension
 
-const API_BASE_URL = 'https://backend-ewd3vb232-jonathan-betzs-projects.vercel.app';
+const API_BASE_URL = 'https://backend-lime-eight-98.vercel.app';
 
 document.addEventListener('DOMContentLoaded', () => {
   const extractBtn = document.getElementById('extractBtn');
