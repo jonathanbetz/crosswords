@@ -115,6 +115,52 @@
       font-size: 12px;
       color: #666;
     }
+    .clue-answer-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .answer-input {
+      flex: 1;
+      max-width: 200px;
+      padding: 4px 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 14px;
+      text-transform: uppercase;
+    }
+    .answer-input:focus {
+      outline: none;
+      border-color: #007bff;
+    }
+    .answer-input.saved {
+      background: #e8f5e9;
+      border-color: #4caf50;
+    }
+    .answer-display {
+      font-family: monospace;
+      font-size: 14px;
+      font-weight: bold;
+      color: #2e7d32;
+      background: #e8f5e9;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .save-status {
+      font-size: 12px;
+      color: #666;
+    }
+    .save-status.saving {
+      color: #ff9800;
+    }
+    .save-status.saved {
+      color: #4caf50;
+    }
+    .save-status.error {
+      color: #f44336;
+    }
     .empty-state {
       text-align: center;
       padding: 60px 20px;
@@ -208,33 +254,98 @@
             <div class="clue-section">
               <h3>Across</h3>
               <ul class="clue-list">
-                ${across.map(clue => renderClue(clue)).join('')}
+                ${across.map(clue => renderClue(clue, date)).join('')}
                 ${across.length === 0 ? '<li class="clue-item">No across clues</li>' : ''}
               </ul>
             </div>
             <div class="clue-section">
               <h3>Down</h3>
               <ul class="clue-list">
-                ${down.map(clue => renderClue(clue)).join('')}
+                ${down.map(clue => renderClue(clue, date)).join('')}
                 ${down.length === 0 ? '<li class="clue-item">No down clues</li>' : ''}
               </ul>
             </div>
           </div>
         `;
+
+        // Add event listeners for answer inputs
+        container.querySelectorAll('.answer-input').forEach(input => {
+          let saveTimeout;
+          input.addEventListener('input', () => {
+            clearTimeout(saveTimeout);
+            const statusEl = container.querySelector(`[data-status-for="${input.dataset.clueId}"]`);
+            statusEl.textContent = '';
+            statusEl.className = 'save-status';
+
+            saveTimeout = setTimeout(() => saveAnswer(input), 500);
+          });
+        });
       } catch (err) {
         container.innerHTML = `<div class="error">Failed to load clues: ${err.message}</div>`;
       }
     }
 
-    function renderClue(clue) {
+    function renderClue(clue, puzzleDate) {
       const pattern = clue.pattern ? `<span class="clue-pattern">${escapeHtml(clue.pattern)}</span>` : '';
+      const clueId = `${clue.direction}-${clue.number}`;
+      const hasAnswer = clue.answer && clue.answer.trim();
+
       return `
-        <li class="clue-item">
-          <span class="clue-number">${clue.number}.</span>
-          <span class="clue-text">${escapeHtml(clue.text)}</span>
-          ${pattern}
+        <li class="clue-item" data-clue-id="${clueId}">
+          <div>
+            <span class="clue-number">${clue.number}.</span>
+            <span class="clue-text">${escapeHtml(clue.text)}</span>
+            ${pattern}
+          </div>
+          <div class="clue-answer-row">
+            <input
+              type="text"
+              class="answer-input ${hasAnswer ? 'saved' : ''}"
+              placeholder="Answer..."
+              value="${hasAnswer ? escapeHtml(clue.answer) : ''}"
+              data-clue-id="${clueId}"
+              data-puzzle-date="${puzzleDate}"
+            >
+            <span class="save-status" data-status-for="${clueId}"></span>
+          </div>
         </li>
       `;
+    }
+
+    async function saveAnswer(input) {
+      const clueId = input.dataset.clueId;
+      const puzzleDate = input.dataset.puzzleDate;
+      const answer = input.value.trim().toUpperCase();
+      const statusEl = document.querySelector(`[data-status-for="${clueId}"]`);
+
+      statusEl.textContent = 'Saving...';
+      statusEl.className = 'save-status saving';
+
+      try {
+        const res = await fetch(`${API_BASE}/api/clue/${clueId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            puzzleDate,
+            updates: { answer }
+          })
+        });
+
+        if (!res.ok) {
+          throw new Error('Failed to save');
+        }
+
+        statusEl.textContent = 'Saved';
+        statusEl.className = 'save-status saved';
+        input.classList.toggle('saved', answer.length > 0);
+
+        setTimeout(() => {
+          statusEl.textContent = '';
+        }, 2000);
+      } catch (err) {
+        statusEl.textContent = 'Error';
+        statusEl.className = 'save-status error';
+      }
     }
 
     function formatDate(dateStr) {
