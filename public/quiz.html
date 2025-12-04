@@ -306,7 +306,11 @@
             const next = findNextInput(idx);
             if (next) next.focus();
           } else if (e.key === 'Enter') {
-            checkAnswer();
+            if (submitted) {
+              loadClue();
+            } else {
+              checkAnswer();
+            }
           }
         });
 
