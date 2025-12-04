@@ -327,6 +327,45 @@
           });
 
           input.addEventListener('focus', () => input.select());
+
+          // Remove completed clue when focus leaves
+          input.addEventListener('blur', () => {
+            setTimeout(() => {
+              // Check if focus moved outside this clue's inputs
+              const activeElement = document.activeElement;
+              const stillInSameClue = letterContainer.contains(activeElement);
+
+              if (!stillInSameClue) {
+                // Check if clue is complete
+                const inputs = letterContainer.querySelectorAll('.letter-input');
+                let answer = '';
+                for (const inp of inputs) {
+                  answer += inp.value.toUpperCase() || ' ';
+                }
+                answer = answer.trimEnd();
+
+                // If complete (no gaps and full length), remove from list
+                if (!answer.includes(' ') && answer.length === pattern.length) {
+                  const clueItem = letterContainer.closest('.clue-item');
+                  clueItem.style.transition = 'opacity 0.3s, transform 0.3s';
+                  clueItem.style.opacity = '0';
+                  clueItem.style.transform = 'translateX(-20px)';
+                  setTimeout(() => {
+                    clueItem.remove();
+                    // Update count
+                    const countEl = document.querySelector('.clue-count');
+                    const remaining = document.querySelectorAll('.clue-item').length;
+                    if (countEl) {
+                      countEl.textContent = `${remaining} clues need answers`;
+                    }
+                    if (remaining === 0) {
+                      document.querySelector('.clue-list').innerHTML = '<div class="empty-state">No incomplete clues found. Great job!</div>';
+                    }
+                  }, 300);
+                }
+              }
+            }, 100); // Small delay to let focus settle
+          });
         });
       });
     }
