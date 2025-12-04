@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Saved Crossword Clues</title>
+  <title>Research Mode - Crossword Clues</title>
   <style>
     * {
       box-sizing: border-box;
@@ -41,30 +41,6 @@
       color: #666;
       margin-bottom: 30px;
     }
-    .date-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-bottom: 30px;
-    }
-    .date-btn {
-      padding: 8px 16px;
-      border: 1px solid #ddd;
-      background: white;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 14px;
-      transition: all 0.2s;
-    }
-    .date-btn:hover {
-      border-color: #007bff;
-      color: #007bff;
-    }
-    .date-btn.active {
-      background: #007bff;
-      color: white;
-      border-color: #007bff;
-    }
     .clues-container {
       background: white;
       border-radius: 8px;
@@ -86,55 +62,46 @@
       color: #666;
       font-size: 14px;
     }
-    .clues-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 30px;
-    }
-    @media (max-width: 600px) {
-      .clues-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-    .clue-section h3 {
-      margin: 0 0 15px 0;
-      color: #007bff;
-      font-size: 16px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
     .clue-list {
       list-style: none;
       padding: 0;
       margin: 0;
     }
     .clue-item {
-      padding: 10px 0;
+      padding: 12px 0;
       border-bottom: 1px solid #f0f0f0;
     }
     .clue-item:last-child {
       border-bottom: none;
     }
+    .clue-item.complete {
+      opacity: 0.6;
+    }
     .clue-row {
       display: flex;
       align-items: flex-start;
-      gap: 6px;
+      gap: 8px;
     }
-    .clue-number {
-      font-weight: bold;
-      color: #007bff;
-      flex-shrink: 0;
+    .clue-info {
+      flex: 1;
+    }
+    .clue-meta {
+      font-size: 12px;
+      color: #999;
+      margin-bottom: 4px;
     }
     .clue-text {
       color: #333;
+      margin-bottom: 8px;
     }
     .search-link {
       opacity: 0;
       transition: opacity 0.2s;
       color: #999;
       text-decoration: none;
-      font-size: 12px;
+      font-size: 14px;
       flex-shrink: 0;
+      padding: 4px;
     }
     .search-link:hover {
       color: #007bff;
@@ -149,7 +116,6 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      margin-top: 6px;
     }
     .letter-inputs {
       display: flex;
@@ -217,157 +183,53 @@
 </head>
 <body>
   <header>
-    <h1>Saved Crossword Clues</h1>
+    <h1>Research Mode</h1>
     <div class="nav-links">
-      <a href="/research.html" class="nav-link">Research</a>
+      <a href="/" class="nav-link">Clues</a>
       <a href="/quiz.html" class="nav-link">Quiz</a>
     </div>
   </header>
-  <p class="subtitle">Your unanswered clues for practice</p>
-
-  <div id="dates" class="date-list">
-    <span class="loading">Loading dates...</span>
-  </div>
+  <p class="subtitle">Find and enter correct answers for incomplete clues</p>
 
   <div id="clues" class="clues-container">
-    <div class="empty-state">Select a puzzle date above to view clues</div>
+    <div class="loading">Loading incomplete clues...</div>
   </div>
 
   <script>
-    const API_BASE = '';  // Same origin
+    const API_BASE = '';
 
-    async function loadDates() {
-      try {
-        const res = await fetch(`${API_BASE}/api/clues`);
-        const data = await res.json();
-
-        const container = document.getElementById('dates');
-
-        if (!data.dates || data.dates.length === 0) {
-          container.innerHTML = '<span class="empty-state">No saved puzzles yet</span>';
-          return;
-        }
-
-        container.innerHTML = data.dates.map(date =>
-          `<button class="date-btn" data-date="${date}">${formatDate(date)}</button>`
-        ).join('');
-
-        // Add click handlers
-        container.querySelectorAll('.date-btn').forEach(btn => {
-          btn.addEventListener('click', () => loadClues(btn.dataset.date));
-        });
-
-        // Load the most recent by default
-        loadClues(data.dates[0]);
-      } catch (err) {
-        document.getElementById('dates').innerHTML =
-          `<div class="error">Failed to load dates: ${err.message}</div>`;
-      }
-    }
-
-    async function loadClues(date) {
-      // Update active button
-      document.querySelectorAll('.date-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.date === date);
-      });
-
+    async function loadClues() {
       const container = document.getElementById('clues');
-      container.innerHTML = '<div class="loading">Loading clues...</div>';
 
       try {
-        const res = await fetch(`${API_BASE}/api/clues?date=${date}`);
+        const res = await fetch(`${API_BASE}/api/incomplete`);
         const data = await res.json();
 
         if (!data.clues || data.clues.length === 0) {
-          container.innerHTML = '<div class="empty-state">No clues saved for this puzzle</div>';
+          container.innerHTML = '<div class="empty-state">No incomplete clues found. Great job!</div>';
           return;
         }
 
-        const across = data.clues.filter(c => c.direction === 'across');
-        const down = data.clues.filter(c => c.direction === 'down');
-
         container.innerHTML = `
           <div class="clues-header">
-            <h2>${formatDate(date)}</h2>
-            <span class="clue-count">${data.clues.length} clues</span>
+            <h2>Incomplete Clues</h2>
+            <span class="clue-count">${data.total} clues need answers</span>
           </div>
-          <div class="clues-grid">
-            <div class="clue-section">
-              <h3>Across</h3>
-              <ul class="clue-list">
-                ${across.map(clue => renderClue(clue, date)).join('')}
-                ${across.length === 0 ? '<li class="clue-item">No across clues</li>' : ''}
-              </ul>
-            </div>
-            <div class="clue-section">
-              <h3>Down</h3>
-              <ul class="clue-list">
-                ${down.map(clue => renderClue(clue, date)).join('')}
-                ${down.length === 0 ? '<li class="clue-item">No down clues</li>' : ''}
-              </ul>
-            </div>
-          </div>
+          <ul class="clue-list">
+            ${data.clues.map(clue => renderClue(clue)).join('')}
+          </ul>
         `;
 
-        // Add event listeners for letter inputs
-        container.querySelectorAll('.letter-inputs').forEach(letterContainer => {
-          let saveTimeout;
-          const clueId = letterContainer.dataset.clueId;
-          const puzzleDate = letterContainer.dataset.puzzleDate;
-          const pattern = letterContainer.dataset.pattern;
-
-          letterContainer.querySelectorAll('.letter-input').forEach((input, idx) => {
-            input.addEventListener('input', (e) => {
-              const val = e.target.value.toUpperCase();
-              e.target.value = val;
-
-              // Update styling
-              updateLetterStyle(input, idx, pattern);
-
-              // Move to next input if a letter was entered
-              if (val && idx < pattern.length - 1) {
-                const nextInput = letterContainer.querySelectorAll('.letter-input')[idx + 1];
-                if (nextInput) nextInput.focus();
-              }
-
-              // Schedule save
-              clearTimeout(saveTimeout);
-              const statusEl = container.querySelector(`[data-status-for="${clueId}"]`);
-              statusEl.textContent = '';
-              statusEl.className = 'save-status';
-              saveTimeout = setTimeout(() => saveAnswer(letterContainer), 500);
-            });
-
-            input.addEventListener('keydown', (e) => {
-              if (e.key === 'Backspace' && !e.target.value && idx > 0) {
-                const prevInput = letterContainer.querySelectorAll('.letter-input')[idx - 1];
-                if (prevInput) {
-                  prevInput.focus();
-                  prevInput.select();
-                }
-              } else if (e.key === 'ArrowLeft' && idx > 0) {
-                const prevInput = letterContainer.querySelectorAll('.letter-input')[idx - 1];
-                if (prevInput) prevInput.focus();
-              } else if (e.key === 'ArrowRight' && idx < pattern.length - 1) {
-                const nextInput = letterContainer.querySelectorAll('.letter-input')[idx + 1];
-                if (nextInput) nextInput.focus();
-              }
-            });
-
-            input.addEventListener('focus', () => input.select());
-          });
-        });
+        setupInputListeners();
       } catch (err) {
         container.innerHTML = `<div class="error">Failed to load clues: ${err.message}</div>`;
       }
     }
 
-    function renderClue(clue, puzzleDate) {
+    function renderClue(clue) {
       const clueId = `${clue.direction}-${clue.number}`;
       const pattern = clue.pattern || '';
       const answer = clue.answer || '';
-
-      // Check if answer is complete (all letters filled)
       const isComplete = answer.length === pattern.length && answer.length > 0;
 
       // Build letter inputs
@@ -404,18 +266,70 @@
       return `
         <li class="clue-item${isComplete ? ' complete' : ''}" data-clue-id="${clueId}">
           <div class="clue-row">
-            <span class="clue-number">${clue.number}.</span>
-            <span class="clue-text">${escapeHtml(clue.text)}</span>
-            <a href="${searchUrl}" target="_blank" rel="noopener" class="search-link" title="Search for clue">&#x1F50D;</a>
-          </div>
-          <div class="clue-answer-row">
-            <div class="letter-inputs" data-clue-id="${clueId}" data-puzzle-date="${puzzleDate}" data-pattern="${escapeHtml(pattern)}">
-              ${letterInputs}
+            <div class="clue-info">
+              <div class="clue-meta">${formatDate(clue.puzzleDate)} - ${clue.direction.toUpperCase()} ${clue.number}</div>
+              <div class="clue-text">${escapeHtml(clue.text)}</div>
+              <div class="clue-answer-row">
+                <div class="letter-inputs" data-clue-id="${clueId}" data-puzzle-date="${clue.puzzleDate}" data-pattern="${escapeHtml(pattern)}">
+                  ${letterInputs}
+                </div>
+                <span class="save-status" data-status-for="${clueId}"></span>
+              </div>
             </div>
-            <span class="save-status" data-status-for="${clueId}"></span>
+            <a href="${searchUrl}" target="_blank" rel="noopener" class="search-link" title="Search for clue">&#x1F50D;</a>
           </div>
         </li>
       `;
+    }
+
+    function setupInputListeners() {
+      document.querySelectorAll('.letter-inputs').forEach(letterContainer => {
+        let saveTimeout;
+        const clueId = letterContainer.dataset.clueId;
+        const puzzleDate = letterContainer.dataset.puzzleDate;
+        const pattern = letterContainer.dataset.pattern;
+
+        letterContainer.querySelectorAll('.letter-input').forEach((input, idx) => {
+          input.addEventListener('input', (e) => {
+            const val = e.target.value.toUpperCase();
+            e.target.value = val;
+
+            // Update styling
+            updateLetterStyle(input, idx, pattern);
+
+            // Move to next input if a letter was entered
+            if (val && idx < pattern.length - 1) {
+              const nextInput = letterContainer.querySelectorAll('.letter-input')[idx + 1];
+              if (nextInput) nextInput.focus();
+            }
+
+            // Schedule save
+            clearTimeout(saveTimeout);
+            const statusEl = document.querySelector(`[data-status-for="${clueId}"]`);
+            statusEl.textContent = '';
+            statusEl.className = 'save-status';
+            saveTimeout = setTimeout(() => saveAnswer(letterContainer), 500);
+          });
+
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Backspace' && !e.target.value && idx > 0) {
+              const prevInput = letterContainer.querySelectorAll('.letter-input')[idx - 1];
+              if (prevInput) {
+                prevInput.focus();
+                prevInput.select();
+              }
+            } else if (e.key === 'ArrowLeft' && idx > 0) {
+              const prevInput = letterContainer.querySelectorAll('.letter-input')[idx - 1];
+              if (prevInput) prevInput.focus();
+            } else if (e.key === 'ArrowRight' && idx < pattern.length - 1) {
+              const nextInput = letterContainer.querySelectorAll('.letter-input')[idx + 1];
+              if (nextInput) nextInput.focus();
+            }
+          });
+
+          input.addEventListener('focus', () => input.select());
+        });
+      });
     }
 
     function updateLetterStyle(input, idx, pattern) {
@@ -440,6 +354,7 @@
       const puzzleDate = letterContainer.dataset.puzzleDate;
       const pattern = letterContainer.dataset.pattern;
       const statusEl = document.querySelector(`[data-status-for="${clueId}"]`);
+      const clueItem = letterContainer.closest('.clue-item');
 
       // Collect answer from all letter inputs
       const inputs = letterContainer.querySelectorAll('.letter-input');
@@ -480,6 +395,13 @@
         statusEl.textContent = 'Saved';
         statusEl.className = 'save-status saved';
 
+        // Mark as complete if answer is full length
+        if (answer.length === pattern.length) {
+          clueItem.classList.add('complete');
+        } else {
+          clueItem.classList.remove('complete');
+        }
+
         setTimeout(() => {
           statusEl.textContent = '';
         }, 2000);
@@ -492,10 +414,9 @@
     function formatDate(dateStr) {
       const date = new Date(dateStr + 'T00:00:00');
       return date.toLocaleDateString('en-US', {
-        weekday: 'short',
-        year: 'numeric',
         month: 'short',
-        day: 'numeric'
+        day: 'numeric',
+        year: 'numeric'
       });
     }
 
@@ -506,7 +427,7 @@
     }
 
     // Load on page ready
-    loadDates();
+    loadClues();
   </script>
 </body>
 </html>

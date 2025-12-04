@@ -25,6 +25,10 @@
     h1 {
       margin: 0;
     }
+    .nav-links {
+      display: flex;
+      gap: 16px;
+    }
     .nav-link {
       color: #007bff;
       text-decoration: none;
@@ -218,7 +222,10 @@
 <body>
   <header>
     <h1>Quiz Mode</h1>
-    <a href="/" class="nav-link">Back to Clues</a>
+    <div class="nav-links">
+      <a href="/" class="nav-link">Clues</a>
+      <a href="/research.html" class="nav-link">Research</a>
+    </div>
   </header>
 
   <div id="quiz" class="quiz-card">
