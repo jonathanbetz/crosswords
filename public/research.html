@@ -267,7 +267,7 @@
         <li class="clue-item${isComplete ? ' complete' : ''}" data-clue-id="${clueId}" data-puzzle-date="${clue.puzzleDate}">
           <div class="clue-meta">${formatDate(clue.puzzleDate)} - ${clue.direction.toUpperCase()} ${clue.number}</div>
           <div class="clue-text-row">
-            <span class="clue-text">${escapeHtml(clue.text)}</span>
+            <span class="clue-text">${escapeHtml(clue.text)} (${pattern.length})</span>
             <a href="${searchUrl}" target="_blank" rel="noopener" class="clue-icon search" title="Search for clue">&#x1F50D;</a>
             <span class="clue-icon ignore" title="Ignore this clue" onclick="ignoreClue('${clueId}', '${clue.puzzleDate}')">&#x1F6AB;</span>
           </div>
