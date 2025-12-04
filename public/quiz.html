@@ -155,6 +155,52 @@
       font-size: 14px;
       margin-top: 20px;
     }
+    .clue-stats {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 16px;
+      font-size: 14px;
+    }
+    .clue-stats-title {
+      font-weight: 600;
+      margin-bottom: 10px;
+      color: #333;
+    }
+    .clue-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      text-align: center;
+    }
+    .stat-item {
+      background: white;
+      padding: 10px 8px;
+      border-radius: 6px;
+      border: 1px solid #e9ecef;
+    }
+    .stat-label {
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .stat-value {
+      font-size: 18px;
+      font-weight: bold;
+      color: #333;
+      margin-top: 4px;
+    }
+    .stat-detail {
+      font-size: 11px;
+      color: #999;
+      margin-top: 2px;
+    }
+    @media (max-width: 500px) {
+      .clue-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
     .loading {
       text-align: center;
       padding: 60px 20px;
@@ -338,7 +384,7 @@
       return null;
     }
 
-    function checkAnswer() {
+    async function checkAnswer() {
       if (submitted) return;
 
       const inputs = document.querySelectorAll('.letter-input');
@@ -377,6 +423,74 @@
         '<button class="next-btn" onclick="loadClue()">Next Clue</button>';
 
       updateStats();
+
+      // Record attempt and show clue stats
+      await recordAttemptAndShowStats(allCorrect);
+    }
+
+    async function recordAttemptAndShowStats(correct) {
+      const clueId = `${currentClue.direction}-${currentClue.number}`;
+      const puzzleDate = currentClue.puzzleDate;
+
+      try {
+        const res = await fetch(`${API_BASE}/api/quiz-attempt`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clueId, puzzleDate, correct })
+        });
+
+        if (!res.ok) throw new Error('Failed to record attempt');
+
+        const data = await res.json();
+        displayClueStats(data.stats);
+      } catch (err) {
+        console.error('Error recording attempt:', err);
+      }
+    }
+
+    function displayClueStats(stats) {
+      const resultDiv = document.getElementById('result');
+
+      const formatStat = (stat) => {
+        if (stat.total === 0) return { value: '-', detail: 'No attempts' };
+        return {
+          value: `${stat.percent}%`,
+          detail: `${stat.correct}/${stat.total}`
+        };
+      };
+
+      const lifetime = formatStat(stats.lifetime);
+      const hour = formatStat(stats.lastHour);
+      const day = formatStat(stats.lastDay);
+      const week = formatStat(stats.lastWeek);
+
+      resultDiv.innerHTML += `
+        <div class="clue-stats">
+          <div class="clue-stats-title">Performance on this clue</div>
+          <div class="clue-stats-grid">
+            <div class="stat-item">
+              <div class="stat-label">Lifetime</div>
+              <div class="stat-value">${lifetime.value}</div>
+              <div class="stat-detail">${lifetime.detail}</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">Last Hour</div>
+              <div class="stat-value">${hour.value}</div>
+              <div class="stat-detail">${hour.detail}</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">Last Day</div>
+              <div class="stat-value">${day.value}</div>
+              <div class="stat-detail">${day.detail}</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">Last Week</div>
+              <div class="stat-value">${week.value}</div>
+              <div class="stat-detail">${week.detail}</div>
+            </div>
+          </div>
+        </div>
+      `;
     }
 
     function updateStats() {
