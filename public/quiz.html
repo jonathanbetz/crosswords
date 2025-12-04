@@ -290,7 +290,7 @@
         <div id="result"></div>
         <div class="actions">
           <button class="submit-btn" id="submitBtn" onclick="checkAnswer()">Check Answer</button>
-          <button class="skip-btn" onclick="loadClue()">Skip</button>
+          <button class="skip-btn" onclick="skipClue()">Skip</button>
         </div>
       `;
 
@@ -426,6 +426,33 @@
 
       // Record attempt and show clue stats
       await recordAttemptAndShowStats(allCorrect);
+    }
+
+    async function skipClue() {
+      if (submitted) {
+        loadClue();
+        return;
+      }
+
+      // Record as incorrect
+      const clueId = `${currentClue.direction}-${currentClue.number}`;
+      const puzzleDate = currentClue.puzzleDate;
+
+      try {
+        await fetch(`${API_BASE}/api/quiz-attempt`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clueId, puzzleDate, correct: false })
+        });
+      } catch (err) {
+        console.error('Error recording skip:', err);
+      }
+
+      // Update session stats
+      stats.total++;
+
+      updateStats();
+      loadClue();
     }
 
     async function recordAttemptAndShowStats(correct) {
