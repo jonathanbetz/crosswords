@@ -41,7 +41,19 @@ async function updateClue(req, res, clueId) {
       return res.status(404).json({ error: 'Clue not found' });
     }
 
-    record.clues[clueIndex] = { ...record.clues[clueIndex], ...updates };
+    const clue = record.clues[clueIndex];
+
+    // Validate answer length matches pattern length
+    if (updates.answer && clue.pattern) {
+      const expectedLength = clue.pattern.length;
+      if (updates.answer.length !== expectedLength) {
+        return res.status(400).json({
+          error: `Answer must be ${expectedLength} characters`
+        });
+      }
+    }
+
+    record.clues[clueIndex] = { ...clue, ...updates };
     record.updatedAt = new Date().toISOString();
 
     await kv.set(key, record);
