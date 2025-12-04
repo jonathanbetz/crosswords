@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Performance - Crossword Stats</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+      color: #333;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    h1 {
+      margin: 0;
+    }
+    .nav-links {
+      display: flex;
+      gap: 16px;
+    }
+    .nav-link {
+      color: #007bff;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .nav-link:hover {
+      text-decoration: underline;
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 20px;
+    }
+    .summary {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 16px;
+      text-align: center;
+    }
+    .summary-item {
+      padding: 12px;
+      background: #f8f9fa;
+      border-radius: 6px;
+    }
+    .summary-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #333;
+    }
+    .summary-label {
+      font-size: 12px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 4px;
+    }
+    .filters {
+      background: white;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .filter-group label {
+      font-size: 14px;
+      color: #666;
+    }
+    .filter-group select {
+      padding: 6px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .clues-container {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    .clues-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      border-bottom: 1px solid #eee;
+      background: #f8f9fa;
+    }
+    .clues-header h2 {
+      margin: 0;
+      font-size: 16px;
+    }
+    .clue-count {
+      color: #666;
+      font-size: 14px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    th {
+      background: #f8f9fa;
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #666;
+      cursor: pointer;
+      user-select: none;
+    }
+    th:hover {
+      background: #e9ecef;
+    }
+    th.sorted-asc::after {
+      content: ' ▲';
+    }
+    th.sorted-desc::after {
+      content: ' ▼';
+    }
+    .clue-text {
+      max-width: 300px;
+    }
+    .clue-answer {
+      font-family: monospace;
+      font-weight: bold;
+      letter-spacing: 1px;
+    }
+    .wilson-score {
+      font-family: monospace;
+    }
+    .wilson-low {
+      color: #c62828;
+    }
+    .wilson-mid {
+      color: #f57c00;
+    }
+    .wilson-high {
+      color: #2e7d32;
+    }
+    .percent {
+      font-weight: 500;
+    }
+    .no-data {
+      color: #999;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #666;
+    }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+    .error {
+      background: #fee;
+      color: #c00;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 768px) {
+      th, td {
+        padding: 8px 12px;
+        font-size: 13px;
+      }
+      .clue-text {
+        max-width: 150px;
+      }
+      .hide-mobile {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Performance</h1>
+    <div class="nav-links">
+      <a href="/" class="nav-link">Clues</a>
+      <a href="/research.html" class="nav-link">Research</a>
+      <a href="/quiz.html" class="nav-link">Quiz</a>
+    </div>
+  </header>
+  <p class="subtitle">Track your quiz performance across all clues</p>
+
+  <div id="summary" class="summary" style="display: none;">
+    <div class="summary-grid">
+      <div class="summary-item">
+        <div class="summary-value" id="totalClues">0</div>
+        <div class="summary-label">Total Clues</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-value" id="attemptedClues">0</div>
+        <div class="summary-label">Attempted</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-value" id="totalAttempts">0</div>
+        <div class="summary-label">Attempts</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-value" id="overallPercent">-</div>
+        <div class="summary-label">Overall %</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="filters" id="filters" style="display: none;">
+    <div class="filter-group">
+      <label>Show:</label>
+      <select id="filterAttempted">
+        <option value="all">All Clues</option>
+        <option value="attempted">Attempted Only</option>
+        <option value="unattempted">Not Attempted</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Wilson Score:</label>
+      <select id="filterWilson">
+        <option value="all">All Scores</option>
+        <option value="low">Low (&lt; 0.5)</option>
+        <option value="mid">Medium (0.5 - 0.8)</option>
+        <option value="high">High (&gt; 0.8)</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="clues" class="clues-container">
+    <div class="loading">Loading performance data...</div>
+  </div>
+
+  <script>
+    const API_BASE = '';
+    let allClues = [];
+    let sortColumn = 'wilson';
+    let sortDirection = 'asc';
+
+    async function loadPerformance() {
+      const container = document.getElementById('clues');
+
+      try {
+        const res = await fetch(`${API_BASE}/api/performance`);
+        const data = await res.json();
+
+        if (!data.clues || data.clues.length === 0) {
+          container.innerHTML = '<div class="empty-state">No completed clues found. Complete some clues first!</div>';
+          return;
+        }
+
+        allClues = data.clues;
+        updateSummary();
+        document.getElementById('summary').style.display = 'block';
+        document.getElementById('filters').style.display = 'flex';
+        renderTable();
+        setupFilters();
+      } catch (err) {
+        container.innerHTML = `<div class="error">Failed to load performance data: ${err.message}</div>`;
+      }
+    }
+
+    function updateSummary() {
+      const totalClues = allClues.length;
+      const attemptedClues = allClues.filter(c => c.stats.total > 0).length;
+      const totalAttempts = allClues.reduce((sum, c) => sum + c.stats.total, 0);
+      const totalCorrect = allClues.reduce((sum, c) => sum + c.stats.correct, 0);
+      const overallPercent = totalAttempts > 0 ? Math.round((totalCorrect / totalAttempts) * 100) : null;
+
+      document.getElementById('totalClues').textContent = totalClues;
+      document.getElementById('attemptedClues').textContent = attemptedClues;
+      document.getElementById('totalAttempts').textContent = totalAttempts;
+      document.getElementById('overallPercent').textContent = overallPercent !== null ? `${overallPercent}%` : '-';
+    }
+
+    function renderTable() {
+      const container = document.getElementById('clues');
+      const filtered = getFilteredClues();
+      const sorted = getSortedClues(filtered);
+
+      if (sorted.length === 0) {
+        container.innerHTML = `
+          <div class="clues-header">
+            <h2>Clue Performance</h2>
+            <span class="clue-count">0 clues</span>
+          </div>
+          <div class="empty-state">No clues match the current filters.</div>
+        `;
+        return;
+      }
+
+      const rows = sorted.map(clue => {
+        const wilsonClass = getWilsonClass(clue.stats.wilsonLower);
+        const percent = clue.stats.percent !== null ? `${clue.stats.percent}%` : '-';
+        const attempts = clue.stats.total > 0 ? `${clue.stats.correct}/${clue.stats.total}` : '-';
+
+        return `
+          <tr>
+            <td class="clue-text">${escapeHtml(clue.text)}</td>
+            <td class="clue-answer">${escapeHtml(clue.answer)}</td>
+            <td class="wilson-score ${wilsonClass}">${clue.stats.wilsonLower.toFixed(3)}</td>
+            <td class="${clue.stats.percent !== null ? 'percent' : 'no-data'}">${percent}</td>
+            <td class="${clue.stats.total > 0 ? '' : 'no-data'}">${attempts}</td>
+            <td class="hide-mobile">${formatDate(clue.puzzleDate)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      container.innerHTML = `
+        <div class="clues-header">
+          <h2>Clue Performance</h2>
+          <span class="clue-count">${sorted.length} clue${sorted.length !== 1 ? 's' : ''}</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th data-sort="text" class="${sortColumn === 'text' ? 'sorted-' + sortDirection : ''}">Clue</th>
+              <th data-sort="answer" class="${sortColumn === 'answer' ? 'sorted-' + sortDirection : ''}">Answer</th>
+              <th data-sort="wilson" class="${sortColumn === 'wilson' ? 'sorted-' + sortDirection : ''}">Wilson</th>
+              <th data-sort="percent" class="${sortColumn === 'percent' ? 'sorted-' + sortDirection : ''}">%</th>
+              <th data-sort="attempts" class="${sortColumn === 'attempts' ? 'sorted-' + sortDirection : ''}">Attempts</th>
+              <th data-sort="date" class="hide-mobile ${sortColumn === 'date' ? 'sorted-' + sortDirection : ''}">Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      `;
+
+      // Add sort listeners
+      container.querySelectorAll('th[data-sort]').forEach(th => {
+        th.addEventListener('click', () => {
+          const col = th.dataset.sort;
+          if (sortColumn === col) {
+            sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+          } else {
+            sortColumn = col;
+            sortDirection = 'asc';
+          }
+          renderTable();
+        });
+      });
+    }
+
+    function getFilteredClues() {
+      const attemptedFilter = document.getElementById('filterAttempted').value;
+      const wilsonFilter = document.getElementById('filterWilson').value;
+
+      return allClues.filter(clue => {
+        // Attempted filter
+        if (attemptedFilter === 'attempted' && clue.stats.total === 0) return false;
+        if (attemptedFilter === 'unattempted' && clue.stats.total > 0) return false;
+
+        // Wilson filter
+        if (wilsonFilter === 'low' && clue.stats.wilsonLower >= 0.5) return false;
+        if (wilsonFilter === 'mid' && (clue.stats.wilsonLower < 0.5 || clue.stats.wilsonLower > 0.8)) return false;
+        if (wilsonFilter === 'high' && clue.stats.wilsonLower <= 0.8) return false;
+
+        return true;
+      });
+    }
+
+    function getSortedClues(clues) {
+      const sorted = [...clues];
+      const dir = sortDirection === 'asc' ? 1 : -1;
+
+      sorted.sort((a, b) => {
+        let cmp = 0;
+        switch (sortColumn) {
+          case 'text':
+            cmp = a.text.localeCompare(b.text);
+            break;
+          case 'answer':
+            cmp = a.answer.localeCompare(b.answer);
+            break;
+          case 'wilson':
+            cmp = a.stats.wilsonLower - b.stats.wilsonLower;
+            break;
+          case 'percent':
+            const aPercent = a.stats.percent ?? -1;
+            const bPercent = b.stats.percent ?? -1;
+            cmp = aPercent - bPercent;
+            break;
+          case 'attempts':
+            cmp = a.stats.total - b.stats.total;
+            break;
+          case 'date':
+            cmp = a.puzzleDate.localeCompare(b.puzzleDate);
+            break;
+        }
+        return cmp * dir;
+      });
+
+      return sorted;
+    }
+
+    function getWilsonClass(wilson) {
+      if (wilson < 0.5) return 'wilson-low';
+      if (wilson <= 0.8) return 'wilson-mid';
+      return 'wilson-high';
+    }
+
+    function setupFilters() {
+      document.getElementById('filterAttempted').addEventListener('change', renderTable);
+      document.getElementById('filterWilson').addEventListener('change', renderTable);
+    }
+
+    function formatDate(dateStr) {
+      const date = new Date(dateStr + 'T00:00:00');
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric'
+      });
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Load on page ready
+    loadPerformance();
+  </script>
+</body>
+</html>

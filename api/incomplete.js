@@ -35,17 +35,18 @@ export default async function handler(req, res) {
           if (!hasCompleteAnswer) {
             incompleteClues.push({
               ...clue,
-              puzzleDate: date
+              puzzleDate: date,
+              savedAt: record.savedAt || date // Fall back to puzzle date if savedAt not present
             });
           }
         }
       }
     }
 
-    // Sort by puzzle date (most recent first), then by direction and number
+    // Sort by date added (most recent first), then by direction and number
     incompleteClues.sort((a, b) => {
-      if (a.puzzleDate !== b.puzzleDate) {
-        return b.puzzleDate.localeCompare(a.puzzleDate);
+      if (a.savedAt !== b.savedAt) {
+        return b.savedAt.localeCompare(a.savedAt);
       }
       if (a.direction !== b.direction) {
         return a.direction.localeCompare(b.direction);
