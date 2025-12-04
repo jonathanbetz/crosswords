@@ -77,40 +77,40 @@
     .clue-item.complete {
       opacity: 0.6;
     }
-    .clue-row {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-    }
-    .clue-info {
-      flex: 1;
+    .clue-item.complete .clue-icon {
+      display: none;
     }
     .clue-meta {
       font-size: 12px;
       color: #999;
       margin-bottom: 4px;
     }
-    .clue-text {
-      color: #333;
+    .clue-text-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
       margin-bottom: 8px;
     }
-    .search-link {
+    .clue-text {
+      color: #333;
+    }
+    .clue-icon {
       opacity: 0;
       transition: opacity 0.2s;
       color: #999;
       text-decoration: none;
-      font-size: 14px;
-      flex-shrink: 0;
-      padding: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 2px;
     }
-    .search-link:hover {
+    .clue-icon:hover {
       color: #007bff;
     }
-    .clue-item:hover .search-link {
+    .clue-item:hover .clue-icon {
       opacity: 1;
     }
-    .clue-item.complete .search-link {
-      display: none;
+    .clue-icon.ignore:hover {
+      color: #dc3545;
     }
     .clue-answer-row {
       display: flex;
@@ -264,19 +264,18 @@
       const searchUrl = `https://www.google.com/search?q=${searchQuery}`;
 
       return `
-        <li class="clue-item${isComplete ? ' complete' : ''}" data-clue-id="${clueId}">
-          <div class="clue-row">
-            <div class="clue-info">
-              <div class="clue-meta">${formatDate(clue.puzzleDate)} - ${clue.direction.toUpperCase()} ${clue.number}</div>
-              <div class="clue-text">${escapeHtml(clue.text)}</div>
-              <div class="clue-answer-row">
-                <div class="letter-inputs" data-clue-id="${clueId}" data-puzzle-date="${clue.puzzleDate}" data-pattern="${escapeHtml(pattern)}">
-                  ${letterInputs}
-                </div>
-                <span class="save-status" data-status-for="${clueId}"></span>
-              </div>
+        <li class="clue-item${isComplete ? ' complete' : ''}" data-clue-id="${clueId}" data-puzzle-date="${clue.puzzleDate}">
+          <div class="clue-meta">${formatDate(clue.puzzleDate)} - ${clue.direction.toUpperCase()} ${clue.number}</div>
+          <div class="clue-text-row">
+            <span class="clue-text">${escapeHtml(clue.text)}</span>
+            <a href="${searchUrl}" target="_blank" rel="noopener" class="clue-icon search" title="Search for clue">&#x1F50D;</a>
+            <span class="clue-icon ignore" title="Ignore this clue" onclick="ignoreClue('${clueId}', '${clue.puzzleDate}')">&#x1F6AB;</span>
+          </div>
+          <div class="clue-answer-row">
+            <div class="letter-inputs" data-clue-id="${clueId}" data-puzzle-date="${clue.puzzleDate}" data-pattern="${escapeHtml(pattern)}">
+              ${letterInputs}
             </div>
-            <a href="${searchUrl}" target="_blank" rel="noopener" class="search-link" title="Search for clue">&#x1F50D;</a>
+            <span class="save-status" data-status-for="${clueId}"></span>
           </div>
         </li>
       `;
@@ -408,6 +407,46 @@
       } catch (err) {
         statusEl.textContent = 'Error';
         statusEl.className = 'save-status error';
+      }
+    }
+
+    async function ignoreClue(clueId, puzzleDate) {
+      try {
+        const res = await fetch(`${API_BASE}/api/clue/${clueId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            puzzleDate,
+            updates: { ignored: true }
+          })
+        });
+
+        if (!res.ok) {
+          throw new Error('Failed to ignore clue');
+        }
+
+        // Remove the clue from the list
+        const clueItem = document.querySelector(`.clue-item[data-clue-id="${clueId}"][data-puzzle-date="${puzzleDate}"]`);
+        if (clueItem) {
+          clueItem.style.transition = 'opacity 0.3s, transform 0.3s';
+          clueItem.style.opacity = '0';
+          clueItem.style.transform = 'translateX(-20px)';
+          setTimeout(() => {
+            clueItem.remove();
+            // Update count
+            const countEl = document.querySelector('.clue-count');
+            const remaining = document.querySelectorAll('.clue-item').length;
+            if (countEl) {
+              countEl.textContent = `${remaining} clues need answers`;
+            }
+            if (remaining === 0) {
+              document.querySelector('.clue-list').innerHTML = '<div class="empty-state">No incomplete clues found. Great job!</div>';
+            }
+          }, 300);
+        }
+      } catch (err) {
+        console.error('Error ignoring clue:', err);
+        alert('Failed to ignore clue');
       }
     }
 

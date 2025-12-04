@@ -27,6 +27,9 @@ export default async function handler(req, res) {
 
       if (record && record.clues) {
         for (const clue of record.clues) {
+          // Skip ignored clues
+          if (clue.ignored) continue;
+
           // Only include clues with complete answers (answer length matches pattern length)
           if (clue.answer && clue.pattern && clue.answer.length === clue.pattern.length) {
             completedClues.push({
