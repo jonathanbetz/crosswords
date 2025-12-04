@@ -321,7 +321,10 @@
       const rows = sorted.map(clue => {
         const wilsonClass = getWilsonClass(clue.stats.wilsonLower);
         const percent = clue.stats.percent !== null ? `${clue.stats.percent}%` : '-';
-        const attempts = clue.stats.total > 0 ? `${clue.stats.correct}/${clue.stats.total}` : '-';
+        const lifetime = clue.stats.total > 0 ? `${clue.stats.correct}/${clue.stats.total}` : '-';
+        const week = clue.stats.lastWeek.total > 0 ? `${clue.stats.lastWeek.correct}/${clue.stats.lastWeek.total}` : '-';
+        const day = clue.stats.lastDay.total > 0 ? `${clue.stats.lastDay.correct}/${clue.stats.lastDay.total}` : '-';
+        const hour = clue.stats.lastHour.total > 0 ? `${clue.stats.lastHour.correct}/${clue.stats.lastHour.total}` : '-';
 
         return `
           <tr>
@@ -329,8 +332,10 @@
             <td class="clue-answer">${escapeHtml(clue.answer)}</td>
             <td class="wilson-score ${wilsonClass}">${clue.stats.wilsonLower.toFixed(3)}</td>
             <td class="${clue.stats.percent !== null ? 'percent' : 'no-data'}">${percent}</td>
-            <td class="${clue.stats.total > 0 ? '' : 'no-data'}">${attempts}</td>
-            <td class="hide-mobile">${formatDate(clue.puzzleDate)}</td>
+            <td class="${clue.stats.total > 0 ? '' : 'no-data'}">${lifetime}</td>
+            <td class="hide-mobile ${clue.stats.lastWeek.total > 0 ? '' : 'no-data'}">${week}</td>
+            <td class="hide-mobile ${clue.stats.lastDay.total > 0 ? '' : 'no-data'}">${day}</td>
+            <td class="hide-mobile ${clue.stats.lastHour.total > 0 ? '' : 'no-data'}">${hour}</td>
           </tr>
         `;
       }).join('');
@@ -347,8 +352,10 @@
               <th data-sort="answer" class="${sortColumn === 'answer' ? 'sorted-' + sortDirection : ''}">Answer</th>
               <th data-sort="wilson" class="${sortColumn === 'wilson' ? 'sorted-' + sortDirection : ''}">Wilson</th>
               <th data-sort="percent" class="${sortColumn === 'percent' ? 'sorted-' + sortDirection : ''}">%</th>
-              <th data-sort="attempts" class="${sortColumn === 'attempts' ? 'sorted-' + sortDirection : ''}">Attempts</th>
-              <th data-sort="date" class="hide-mobile ${sortColumn === 'date' ? 'sorted-' + sortDirection : ''}">Date</th>
+              <th data-sort="attempts" class="${sortColumn === 'attempts' ? 'sorted-' + sortDirection : ''}">Lifetime</th>
+              <th data-sort="week" class="hide-mobile ${sortColumn === 'week' ? 'sorted-' + sortDirection : ''}">Week</th>
+              <th data-sort="day" class="hide-mobile ${sortColumn === 'day' ? 'sorted-' + sortDirection : ''}">Day</th>
+              <th data-sort="hour" class="hide-mobile ${sortColumn === 'hour' ? 'sorted-' + sortDirection : ''}">Hour</th>
             </tr>
           </thead>
           <tbody>
@@ -414,8 +421,14 @@
           case 'attempts':
             cmp = a.stats.total - b.stats.total;
             break;
-          case 'date':
-            cmp = a.puzzleDate.localeCompare(b.puzzleDate);
+          case 'week':
+            cmp = a.stats.lastWeek.total - b.stats.lastWeek.total;
+            break;
+          case 'day':
+            cmp = a.stats.lastDay.total - b.stats.lastDay.total;
+            break;
+          case 'hour':
+            cmp = a.stats.lastHour.total - b.stats.lastHour.total;
             break;
         }
         return cmp * dir;

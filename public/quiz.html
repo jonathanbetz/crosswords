@@ -495,9 +495,9 @@
       };
 
       const lifetime = formatStat(stats.lifetime);
-      const hour = formatStat(stats.lastHour);
-      const day = formatStat(stats.lastDay);
       const week = formatStat(stats.lastWeek);
+      const day = formatStat(stats.lastDay);
+      const hour = formatStat(stats.lastHour);
 
       resultDiv.innerHTML += `
         <div class="clue-stats">
@@ -509,9 +509,9 @@
               <div class="stat-detail">${lifetime.detail}</div>
             </div>
             <div class="stat-item">
-              <div class="stat-label">Last Hour</div>
-              <div class="stat-value">${hour.value}</div>
-              <div class="stat-detail">${hour.detail}</div>
+              <div class="stat-label">Last Week</div>
+              <div class="stat-value">${week.value}</div>
+              <div class="stat-detail">${week.detail}</div>
             </div>
             <div class="stat-item">
               <div class="stat-label">Last Day</div>
@@ -519,9 +519,9 @@
               <div class="stat-detail">${day.detail}</div>
             </div>
             <div class="stat-item">
-              <div class="stat-label">Last Week</div>
-              <div class="stat-value">${week.value}</div>
-              <div class="stat-detail">${week.detail}</div>
+              <div class="stat-label">Last Hour</div>
+              <div class="stat-value">${hour.value}</div>
+              <div class="stat-detail">${hour.detail}</div>
             </div>
           </div>
         </div>
