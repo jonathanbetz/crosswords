@@ -231,7 +231,7 @@
           value="${displayChar}"
           maxlength="1"
           data-index="${i}"
-          ${isFromPattern ? 'readonly' : ''}
+          data-from-pattern="${isFromPattern}"
         >`;
       }
 
@@ -251,8 +251,13 @@
       setupInputListeners();
 
       // Focus first empty input
-      const firstEmpty = container.querySelector('.letter-input:not([readonly])');
-      if (firstEmpty) firstEmpty.focus();
+      const inputs = container.querySelectorAll('.letter-input');
+      for (const input of inputs) {
+        if (!input.value) {
+          input.focus();
+          break;
+        }
+      }
     }
 
     function setupInputListeners() {
@@ -260,15 +265,25 @@
       const pattern = currentClue.pattern;
 
       inputs.forEach((input, idx) => {
-        if (input.readOnly) return;
+        const isFromPattern = input.dataset.fromPattern === 'true';
+        const patternChar = pattern[idx];
 
         input.addEventListener('input', (e) => {
           const val = e.target.value.toUpperCase();
           e.target.value = val;
 
           // Update styling
-          input.classList.remove('empty', 'user-entered');
-          input.classList.add(val ? 'user-entered' : 'empty');
+          input.classList.remove('empty', 'user-entered', 'from-pattern');
+          if (val) {
+            // If it matches the original pattern letter, show as from-pattern
+            if (isFromPattern && val === patternChar) {
+              input.classList.add('from-pattern');
+            } else {
+              input.classList.add('user-entered');
+            }
+          } else {
+            input.classList.add('empty');
+          }
 
           // Move to next empty input
           if (val) {
@@ -279,10 +294,10 @@
 
         input.addEventListener('keydown', (e) => {
           if (e.key === 'Backspace' && !e.target.value) {
-            const prevEmpty = findPrevEmptyInput(idx);
-            if (prevEmpty) {
-              prevEmpty.focus();
-              prevEmpty.select();
+            const prev = findPrevInput(idx);
+            if (prev) {
+              prev.focus();
+              prev.select();
             }
           } else if (e.key === 'ArrowLeft') {
             const prev = findPrevInput(idx);
@@ -302,32 +317,20 @@
     function findNextEmptyInput(currentIdx) {
       const inputs = document.querySelectorAll('.letter-input');
       for (let i = currentIdx + 1; i < inputs.length; i++) {
-        if (!inputs[i].readOnly && !inputs[i].value) return inputs[i];
-      }
-      return null;
-    }
-
-    function findPrevEmptyInput(currentIdx) {
-      const inputs = document.querySelectorAll('.letter-input');
-      for (let i = currentIdx - 1; i >= 0; i--) {
-        if (!inputs[i].readOnly) return inputs[i];
+        if (!inputs[i].value) return inputs[i];
       }
       return null;
     }
 
     function findNextInput(currentIdx) {
       const inputs = document.querySelectorAll('.letter-input');
-      for (let i = currentIdx + 1; i < inputs.length; i++) {
-        if (!inputs[i].readOnly) return inputs[i];
-      }
+      if (currentIdx + 1 < inputs.length) return inputs[currentIdx + 1];
       return null;
     }
 
     function findPrevInput(currentIdx) {
       const inputs = document.querySelectorAll('.letter-input');
-      for (let i = currentIdx - 1; i >= 0; i--) {
-        if (!inputs[i].readOnly) return inputs[i];
-      }
+      if (currentIdx - 1 >= 0) return inputs[currentIdx - 1];
       return null;
     }
 
