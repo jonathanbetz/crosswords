@@ -329,6 +329,34 @@
 
           input.addEventListener('focus', () => input.select());
 
+          // Handle paste to distribute characters across inputs
+          input.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const pastedText = (e.clipboardData || window.clipboardData).getData('text').toUpperCase().replace(/[^A-Z]/g, '');
+            if (!pastedText) return;
+
+            const inputs = letterContainer.querySelectorAll('.letter-input');
+            let pasteIdx = 0;
+
+            // Fill inputs starting from current position
+            for (let i = idx; i < inputs.length && pasteIdx < pastedText.length; i++) {
+              inputs[i].value = pastedText[pasteIdx];
+              updateLetterStyle(inputs[i], i, pattern);
+              pasteIdx++;
+            }
+
+            // Focus the next empty input or the last filled one
+            const nextEmptyIdx = Math.min(idx + pastedText.length, inputs.length - 1);
+            inputs[nextEmptyIdx].focus();
+
+            // Schedule save
+            clearTimeout(saveTimeout);
+            const statusEl = document.querySelector(`[data-status-for="${clueId}"]`);
+            statusEl.textContent = '';
+            statusEl.className = 'save-status';
+            saveTimeout = setTimeout(() => saveAnswer(letterContainer), 500);
+          });
+
           // Remove completed clue when focus leaves
           input.addEventListener('blur', () => {
             setTimeout(() => {
