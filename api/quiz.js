@@ -20,6 +20,63 @@ function calculateWilsonLower(successes, total) {
   return numerator / denominator;
 }
 
+// Calculate minimum interval before showing a clue again based on Wilson score
+// Higher Wilson score = longer interval (more confident it's learned)
+// Returns interval in milliseconds
+function calculateMinInterval(wilsonLower, total) {
+  if (total === 0) {
+    // Never seen - no minimum interval
+    return 0;
+  }
+
+  // Base intervals in minutes, scaled by Wilson score
+  // Wilson 0.0 = 1 minute minimum
+  // Wilson 0.5 = 10 minutes minimum
+  // Wilson 0.8 = 1 hour minimum
+  // Wilson 0.95+ = 4 hours minimum
+
+  const baseMinutes = 1;
+  const maxMinutes = 240; // 4 hours
+
+  // Exponential scaling: interval grows faster as Wilson score increases
+  // This creates longer gaps for well-learned items
+  const scaleFactor = Math.pow(wilsonLower, 2) * maxMinutes + baseMinutes;
+
+  // Also factor in total attempts - more attempts with high success = longer interval
+  const attemptBonus = Math.min(total / 10, 1); // caps at 10 attempts
+  const adjustedMinutes = scaleFactor * (1 + attemptBonus * wilsonLower);
+
+  return adjustedMinutes * 60 * 1000; // Convert to milliseconds
+}
+
+// Calculate priority score for spaced repetition
+// Lower score = higher priority (should be shown sooner)
+function calculatePriority(wilsonLower, total, lastAttemptTime, now) {
+  if (total === 0) {
+    // Never attempted - highest priority
+    return -1000;
+  }
+
+  const minInterval = calculateMinInterval(wilsonLower, total);
+  const timeSinceLastAttempt = now - lastAttemptTime;
+
+  // If we haven't waited long enough, deprioritize significantly
+  if (timeSinceLastAttempt < minInterval) {
+    // How much of the interval remains (0 to 1)
+    const remainingRatio = (minInterval - timeSinceLastAttempt) / minInterval;
+    // Push to back of queue - higher remaining ratio = lower priority
+    return 1000 + remainingRatio * 1000;
+  }
+
+  // Past minimum interval - priority based on Wilson score
+  // Lower Wilson = higher priority (shown sooner)
+  // Also factor in how much we've exceeded the interval
+  const overdueRatio = timeSinceLastAttempt / minInterval;
+  const overduePenalty = Math.min(overdueRatio - 1, 5) * 0.1; // caps at 0.5 reduction
+
+  return wilsonLower - overduePenalty;
+}
+
 export default async function handler(req, res) {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -65,7 +122,9 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'No completed clues found' });
     }
 
-    // Get quiz attempt stats for all clues and calculate Wilson scores
+    const now = Date.now();
+
+    // Get quiz attempt stats for all clues and calculate spaced repetition priority
     const cluesWithScores = await Promise.all(
       completedClues.map(async (clue) => {
         const clueId = `${clue.direction}-${clue.number}`;
@@ -76,35 +135,49 @@ export default async function handler(req, res) {
         const correct = attempts.filter(a => a.correct).length;
 
         // Calculate Wilson score lower bound
-        // This gives a conservative estimate of the true success rate
         const wilsonLower = calculateWilsonLower(correct, total);
+
+        // Get last attempt time
+        const lastAttemptTime = total > 0
+          ? Math.max(...attempts.map(a => a.timestamp))
+          : 0;
+
+        // Calculate spaced repetition priority
+        const priority = calculatePriority(wilsonLower, total, lastAttemptTime, now);
+
+        // Calculate minimum interval for display
+        const minInterval = calculateMinInterval(wilsonLower, total);
+        const timeSinceLastAttempt = total > 0 ? now - lastAttemptTime : null;
 
         return {
           ...clue,
           wilsonLower,
           total,
-          correct
+          correct,
+          priority,
+          lastAttemptTime,
+          minInterval,
+          timeSinceLastAttempt
         };
       })
     );
 
-    // Sort by Wilson lower bound (ascending) - clues we're least confident about go first
-    // Add some randomization among clues with similar scores
+    // Sort by priority (ascending) - lower priority score = should be shown first
     cluesWithScores.sort((a, b) => {
-      const diff = a.wilsonLower - b.wilsonLower;
-      // If scores are very close (within 0.05), randomize
-      if (Math.abs(diff) < 0.05) {
+      const diff = a.priority - b.priority;
+      // If priorities are very close, add some randomization
+      if (Math.abs(diff) < 0.1) {
         return Math.random() - 0.5;
       }
       return diff;
     });
 
-    // Pick from the top candidates (lowest Wilson scores)
-    // Use weighted selection favoring the worst-performing clues
+    // Pick from the top candidates (highest priority)
+    // Use weighted selection favoring the highest priority clues
     const topCount = Math.min(5, cluesWithScores.length);
     const weights = [];
     for (let i = 0; i < topCount; i++) {
-      // Higher weight for lower-ranked (worse performing) clues
+      // Higher weight for higher priority (lower index)
       weights.push(topCount - i);
     }
     const totalWeight = weights.reduce((a, b) => a + b, 0);
@@ -132,7 +205,14 @@ export default async function handler(req, res) {
       totalCompleted: completedClues.length,
       wilsonLower: clue.wilsonLower,
       attempts: clue.total,
-      correct: clue.correct
+      correct: clue.correct,
+      spacedRepetition: {
+        priority: clue.priority,
+        minIntervalMs: clue.minInterval,
+        minIntervalMinutes: Math.round(clue.minInterval / 60000),
+        timeSinceLastMs: clue.timeSinceLastAttempt,
+        timeSinceLastMinutes: clue.timeSinceLastAttempt ? Math.round(clue.timeSinceLastAttempt / 60000) : null
+      }
     });
   } catch (error) {
     console.error('Error getting quiz clue:', error);
