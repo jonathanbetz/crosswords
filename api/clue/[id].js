@@ -43,8 +43,8 @@ async function updateClue(req, res, clueId) {
 
     const clue = record.clues[clueIndex];
 
-    // Validate answer length matches pattern length
-    if (updates.answer && clue.pattern) {
+    // Validate answer length matches pattern length (if answer is provided and non-empty)
+    if (updates.answer && updates.answer.length > 0 && clue.pattern) {
       const expectedLength = clue.pattern.length;
       if (updates.answer.length !== expectedLength) {
         return res.status(400).json({

@@ -105,48 +105,43 @@
     .clue-text {
       color: #333;
     }
-    .clue-pattern {
-      display: inline-block;
-      margin-left: 10px;
-      padding: 2px 8px;
-      background: #f0f0f0;
-      border-radius: 4px;
-      font-family: monospace;
-      font-size: 12px;
-      color: #666;
-    }
     .clue-answer-row {
       display: flex;
       align-items: center;
       gap: 8px;
       margin-top: 6px;
     }
-    .answer-input {
-      flex: 1;
-      max-width: 200px;
-      padding: 4px 8px;
+    .letter-inputs {
+      display: flex;
+      gap: 2px;
+    }
+    .letter-input {
+      width: 24px;
+      height: 28px;
+      padding: 0;
       border: 1px solid #ddd;
-      border-radius: 4px;
-      font-family: monospace;
-      font-size: 14px;
-      text-transform: uppercase;
-    }
-    .answer-input:focus {
-      outline: none;
-      border-color: #007bff;
-    }
-    .answer-input.saved {
-      background: #e8f5e9;
-      border-color: #4caf50;
-    }
-    .answer-display {
+      border-radius: 3px;
       font-family: monospace;
       font-size: 14px;
       font-weight: bold;
+      text-align: center;
+      text-transform: uppercase;
+      background: white;
+    }
+    .letter-input:focus {
+      outline: none;
+      border-color: #007bff;
+      background: #e3f2fd;
+    }
+    .letter-input.from-pattern {
       color: #2e7d32;
       background: #e8f5e9;
-      padding: 4px 8px;
-      border-radius: 4px;
+    }
+    .letter-input.user-entered {
+      color: #666;
+    }
+    .letter-input.empty {
+      background: #fafafa;
     }
     .save-status {
       font-size: 12px;
@@ -160,13 +155,6 @@
     }
     .save-status.error {
       color: #f44336;
-    }
-    .save-status.incomplete {
-      color: #ff9800;
-    }
-    .answer-input.incomplete {
-      border-color: #ff9800;
-      background: #fff8e1;
     }
     .empty-state {
       text-align: center;
@@ -275,16 +263,52 @@
           </div>
         `;
 
-        // Add event listeners for answer inputs
-        container.querySelectorAll('.answer-input').forEach(input => {
+        // Add event listeners for letter inputs
+        container.querySelectorAll('.letter-inputs').forEach(letterContainer => {
           let saveTimeout;
-          input.addEventListener('input', () => {
-            clearTimeout(saveTimeout);
-            const statusEl = container.querySelector(`[data-status-for="${input.dataset.clueId}"]`);
-            statusEl.textContent = '';
-            statusEl.className = 'save-status';
+          const clueId = letterContainer.dataset.clueId;
+          const puzzleDate = letterContainer.dataset.puzzleDate;
+          const pattern = letterContainer.dataset.pattern;
 
-            saveTimeout = setTimeout(() => saveAnswer(input), 500);
+          letterContainer.querySelectorAll('.letter-input').forEach((input, idx) => {
+            input.addEventListener('input', (e) => {
+              const val = e.target.value.toUpperCase();
+              e.target.value = val;
+
+              // Update styling
+              updateLetterStyle(input, idx, pattern);
+
+              // Move to next input if a letter was entered
+              if (val && idx < pattern.length - 1) {
+                const nextInput = letterContainer.querySelectorAll('.letter-input')[idx + 1];
+                if (nextInput) nextInput.focus();
+              }
+
+              // Schedule save
+              clearTimeout(saveTimeout);
+              const statusEl = container.querySelector(`[data-status-for="${clueId}"]`);
+              statusEl.textContent = '';
+              statusEl.className = 'save-status';
+              saveTimeout = setTimeout(() => saveAnswer(letterContainer), 500);
+            });
+
+            input.addEventListener('keydown', (e) => {
+              if (e.key === 'Backspace' && !e.target.value && idx > 0) {
+                const prevInput = letterContainer.querySelectorAll('.letter-input')[idx - 1];
+                if (prevInput) {
+                  prevInput.focus();
+                  prevInput.select();
+                }
+              } else if (e.key === 'ArrowLeft' && idx > 0) {
+                const prevInput = letterContainer.querySelectorAll('.letter-input')[idx - 1];
+                if (prevInput) prevInput.focus();
+              } else if (e.key === 'ArrowRight' && idx < pattern.length - 1) {
+                const nextInput = letterContainer.querySelectorAll('.letter-input')[idx + 1];
+                if (nextInput) nextInput.focus();
+              }
+            });
+
+            input.addEventListener('focus', () => input.select());
           });
         });
       } catch (err) {
@@ -293,52 +317,95 @@
     }
 
     function renderClue(clue, puzzleDate) {
-      const pattern = clue.pattern ? `<span class="clue-pattern">${escapeHtml(clue.pattern)}</span>` : '';
       const clueId = `${clue.direction}-${clue.number}`;
-      const hasAnswer = clue.answer && clue.answer.trim();
-      const expectedLength = clue.pattern ? clue.pattern.length : 0;
+      const pattern = clue.pattern || '';
+      const answer = clue.answer || '';
+
+      // Build letter inputs
+      let letterInputs = '';
+      for (let i = 0; i < pattern.length; i++) {
+        const patternChar = pattern[i];
+        const answerChar = answer[i] || '';
+        const displayChar = answerChar || (patternChar !== '_' ? patternChar : '');
+
+        let className = 'letter-input';
+        if (displayChar) {
+          if (patternChar !== '_' && displayChar === patternChar) {
+            className += ' from-pattern';
+          } else {
+            className += ' user-entered';
+          }
+        } else {
+          className += ' empty';
+        }
+
+        letterInputs += `<input
+          type="text"
+          class="${className}"
+          value="${escapeHtml(displayChar)}"
+          maxlength="1"
+          data-index="${i}"
+        >`;
+      }
 
       return `
         <li class="clue-item" data-clue-id="${clueId}">
           <div>
             <span class="clue-number">${clue.number}.</span>
             <span class="clue-text">${escapeHtml(clue.text)}</span>
-            ${pattern}
           </div>
           <div class="clue-answer-row">
-            <input
-              type="text"
-              class="answer-input ${hasAnswer ? 'saved' : ''}"
-              placeholder="${expectedLength ? expectedLength + ' letters' : 'Answer...'}"
-              value="${hasAnswer ? escapeHtml(clue.answer) : ''}"
-              data-clue-id="${clueId}"
-              data-puzzle-date="${puzzleDate}"
-              data-expected-length="${expectedLength}"
-              ${expectedLength ? `maxlength="${expectedLength}"` : ''}
-            >
+            <div class="letter-inputs" data-clue-id="${clueId}" data-puzzle-date="${puzzleDate}" data-pattern="${escapeHtml(pattern)}">
+              ${letterInputs}
+            </div>
             <span class="save-status" data-status-for="${clueId}"></span>
           </div>
         </li>
       `;
     }
 
-    async function saveAnswer(input) {
-      const clueId = input.dataset.clueId;
-      const puzzleDate = input.dataset.puzzleDate;
-      const answer = input.value.trim().toUpperCase();
-      const expectedLength = parseInt(input.dataset.expectedLength) || 0;
+    function updateLetterStyle(input, idx, pattern) {
+      const val = input.value;
+      const patternChar = pattern[idx];
+
+      input.classList.remove('from-pattern', 'user-entered', 'empty');
+
+      if (val) {
+        if (patternChar !== '_' && val.toUpperCase() === patternChar) {
+          input.classList.add('from-pattern');
+        } else {
+          input.classList.add('user-entered');
+        }
+      } else {
+        input.classList.add('empty');
+      }
+    }
+
+    async function saveAnswer(letterContainer) {
+      const clueId = letterContainer.dataset.clueId;
+      const puzzleDate = letterContainer.dataset.puzzleDate;
+      const pattern = letterContainer.dataset.pattern;
       const statusEl = document.querySelector(`[data-status-for="${clueId}"]`);
 
-      // Check length matches (if we have an expected length)
-      if (expectedLength && answer.length > 0 && answer.length !== expectedLength) {
-        statusEl.textContent = `${answer.length}/${expectedLength}`;
-        statusEl.className = 'save-status incomplete';
-        input.classList.remove('saved');
-        input.classList.add('incomplete');
+      // Collect answer from all letter inputs
+      const inputs = letterContainer.querySelectorAll('.letter-input');
+      let answer = '';
+      for (const input of inputs) {
+        answer += input.value.toUpperCase() || ' ';
+      }
+      answer = answer.trimEnd();
+
+      // Don't save if incomplete (has gaps)
+      if (answer.includes(' ') && answer.trim().length > 0) {
+        statusEl.textContent = '';
         return;
       }
 
-      input.classList.remove('incomplete');
+      // If all empty, save empty string
+      if (answer.trim().length === 0) {
+        answer = '';
+      }
+
       statusEl.textContent = 'Saving...';
       statusEl.className = 'save-status saving';
 
@@ -358,7 +425,6 @@
 
         statusEl.textContent = 'Saved';
         statusEl.className = 'save-status saved';
-        input.classList.toggle('saved', answer.length > 0);
 
         setTimeout(() => {
           statusEl.textContent = '';
