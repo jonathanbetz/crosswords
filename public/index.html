@@ -65,6 +65,25 @@
       color: white;
       border-color: #007bff;
     }
+    .date-btn .incomplete-count {
+      display: inline-block;
+      background: #dc3545;
+      color: white;
+      font-size: 11px;
+      font-weight: bold;
+      padding: 1px 6px;
+      border-radius: 10px;
+      margin-left: 6px;
+    }
+    .date-btn.active .incomplete-count {
+      background: rgba(255,255,255,0.3);
+    }
+    .date-btn .incomplete-count.complete {
+      background: #28a745;
+    }
+    .date-btn.active .incomplete-count.complete {
+      background: rgba(255,255,255,0.3);
+    }
     .clues-container {
       background: white;
       border-radius: 8px;
@@ -249,9 +268,20 @@
           return;
         }
 
-        container.innerHTML = data.dates.map(date =>
-          `<button class="date-btn" data-date="${date}">${formatDate(date)}</button>`
-        ).join('');
+        // Build a map of date -> stats for quick lookup
+        const statsMap = {};
+        if (data.puzzles) {
+          data.puzzles.forEach(p => {
+            statsMap[p.date] = p;
+          });
+        }
+
+        container.innerHTML = data.dates.map(date => {
+          const stats = statsMap[date];
+          const incomplete = stats ? stats.incomplete : 0;
+          const isComplete = incomplete === 0;
+          return `<button class="date-btn" data-date="${date}">${formatDate(date)}<span class="incomplete-count${isComplete ? ' complete' : ''}">${incomplete}</span></button>`;
+        }).join('');
 
         // Add click handlers
         container.querySelectorAll('.date-btn').forEach(btn => {

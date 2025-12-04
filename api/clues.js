@@ -58,9 +58,28 @@ async function getClues(req, res) {
 
       return res.status(200).json(record);
     } else {
-      // Get list of all saved puzzle dates
+      // Get list of all saved puzzle dates with summary stats
       const dates = await kv.smembers('puzzle:dates');
-      return res.status(200).json({ dates: dates.sort().reverse() });
+      const sortedDates = dates.sort().reverse();
+
+      // Fetch summary info for each puzzle
+      const puzzles = await Promise.all(
+        sortedDates.map(async (d) => {
+          const record = await kv.get(`puzzle:${d}`);
+          if (!record) return { date: d, total: 0, incomplete: 0 };
+
+          const total = record.clues.length;
+          const incomplete = record.clues.filter(c => {
+            const pattern = c.pattern || '';
+            const answer = c.answer || '';
+            return answer.length !== pattern.length || answer.length === 0;
+          }).length;
+
+          return { date: d, total, incomplete };
+        })
+      );
+
+      return res.status(200).json({ dates: sortedDates, puzzles });
     }
   } catch (error) {
     console.error('Error getting clues:', error);
