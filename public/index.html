@@ -97,13 +97,35 @@
     .clue-item:last-child {
       border-bottom: none;
     }
+    .clue-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+    }
     .clue-number {
       font-weight: bold;
       color: #007bff;
-      margin-right: 8px;
+      flex-shrink: 0;
     }
     .clue-text {
       color: #333;
+    }
+    .search-link {
+      opacity: 0;
+      transition: opacity 0.2s;
+      color: #999;
+      text-decoration: none;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .search-link:hover {
+      color: #007bff;
+    }
+    .clue-item:hover .search-link {
+      opacity: 1;
+    }
+    .clue-item.complete .search-link {
+      display: none;
     }
     .clue-answer-row {
       display: flex;
@@ -321,6 +343,9 @@
       const pattern = clue.pattern || '';
       const answer = clue.answer || '';
 
+      // Check if answer is complete (all letters filled)
+      const isComplete = answer.length === pattern.length && answer.length > 0;
+
       // Build letter inputs
       let letterInputs = '';
       for (let i = 0; i < pattern.length; i++) {
@@ -348,11 +373,16 @@
         >`;
       }
 
+      // Build Google search URL
+      const searchQuery = encodeURIComponent(`${clue.text} crossword clue`);
+      const searchUrl = `https://www.google.com/search?q=${searchQuery}`;
+
       return `
-        <li class="clue-item" data-clue-id="${clueId}">
-          <div>
+        <li class="clue-item${isComplete ? ' complete' : ''}" data-clue-id="${clueId}">
+          <div class="clue-row">
             <span class="clue-number">${clue.number}.</span>
             <span class="clue-text">${escapeHtml(clue.text)}</span>
+            <a href="${searchUrl}" target="_blank" rel="noopener" class="search-link" title="Search for clue">&#x1F50D;</a>
           </div>
           <div class="clue-answer-row">
             <div class="letter-inputs" data-clue-id="${clueId}" data-puzzle-date="${puzzleDate}" data-pattern="${escapeHtml(pattern)}">
