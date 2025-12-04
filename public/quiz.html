@@ -55,10 +55,12 @@
     }
     .letter-inputs {
       display: flex;
-      gap: 4px;
+      gap: 3px;
       justify-content: center;
       margin-bottom: 24px;
-      flex-wrap: wrap;
+    }
+    .letter-inputs.compact {
+      gap: 2px;
     }
     .letter-input {
       width: 36px;
@@ -72,6 +74,20 @@
       text-align: center;
       text-transform: uppercase;
       background: white;
+      flex-shrink: 0;
+    }
+    .letter-inputs.compact .letter-input {
+      width: 28px;
+      height: 36px;
+      font-size: 16px;
+      border-radius: 4px;
+    }
+    .letter-inputs.very-compact .letter-input {
+      width: 22px;
+      height: 30px;
+      font-size: 14px;
+      border-radius: 3px;
+      border-width: 1px;
     }
     .letter-input:focus {
       outline: none;
@@ -265,6 +281,14 @@
       const container = document.getElementById('quiz');
       const pattern = currentClue.pattern || '';
 
+      // Determine size class based on answer length
+      let sizeClass = '';
+      if (pattern.length > 18) {
+        sizeClass = 'very-compact';
+      } else if (pattern.length > 12) {
+        sizeClass = 'compact';
+      }
+
       // Build letter inputs - show letters from pattern, leave blanks for underscores
       let letterInputs = '';
       for (let i = 0; i < pattern.length; i++) {
@@ -292,7 +316,7 @@
       container.innerHTML = `
         <div class="clue-text">${escapeHtml(currentClue.text)}</div>
         <div class="clue-meta">${currentClue.direction.toUpperCase()} ${currentClue.number} - ${pattern.length} letters</div>
-        <div class="letter-inputs" id="letterInputs">
+        <div class="letter-inputs ${sizeClass}" id="letterInputs">
           ${letterInputs}
         </div>
         <div id="result"></div>
