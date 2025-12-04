@@ -167,9 +167,6 @@
     .wilson-high {
       color: #2e7d32;
     }
-    .percent {
-      font-weight: 500;
-    }
     .no-data {
       color: #999;
     }
@@ -320,7 +317,6 @@
 
       const rows = sorted.map(clue => {
         const wilsonClass = getWilsonClass(clue.stats.wilsonLower);
-        const percent = clue.stats.percent !== null ? `${clue.stats.percent}%` : '-';
         const lifetime = clue.stats.total > 0 ? `${clue.stats.correct}/${clue.stats.total}` : '-';
         const week = clue.stats.lastWeek.total > 0 ? `${clue.stats.lastWeek.correct}/${clue.stats.lastWeek.total}` : '-';
         const day = clue.stats.lastDay.total > 0 ? `${clue.stats.lastDay.correct}/${clue.stats.lastDay.total}` : '-';
@@ -331,7 +327,6 @@
             <td class="clue-text">${escapeHtml(clue.text)}</td>
             <td class="clue-answer">${escapeHtml(clue.answer)}</td>
             <td class="wilson-score ${wilsonClass}">${clue.stats.wilsonLower.toFixed(3)}</td>
-            <td class="${clue.stats.percent !== null ? 'percent' : 'no-data'}">${percent}</td>
             <td class="${clue.stats.total > 0 ? '' : 'no-data'}">${lifetime}</td>
             <td class="hide-mobile ${clue.stats.lastWeek.total > 0 ? '' : 'no-data'}">${week}</td>
             <td class="hide-mobile ${clue.stats.lastDay.total > 0 ? '' : 'no-data'}">${day}</td>
@@ -351,7 +346,6 @@
               <th data-sort="text" class="${sortColumn === 'text' ? 'sorted-' + sortDirection : ''}">Clue</th>
               <th data-sort="answer" class="${sortColumn === 'answer' ? 'sorted-' + sortDirection : ''}">Answer</th>
               <th data-sort="wilson" class="${sortColumn === 'wilson' ? 'sorted-' + sortDirection : ''}">Wilson</th>
-              <th data-sort="percent" class="${sortColumn === 'percent' ? 'sorted-' + sortDirection : ''}">%</th>
               <th data-sort="attempts" class="${sortColumn === 'attempts' ? 'sorted-' + sortDirection : ''}">Lifetime</th>
               <th data-sort="week" class="hide-mobile ${sortColumn === 'week' ? 'sorted-' + sortDirection : ''}">Week</th>
               <th data-sort="day" class="hide-mobile ${sortColumn === 'day' ? 'sorted-' + sortDirection : ''}">Day</th>
@@ -412,11 +406,6 @@
             break;
           case 'wilson':
             cmp = a.stats.wilsonLower - b.stats.wilsonLower;
-            break;
-          case 'percent':
-            const aPercent = a.stats.percent ?? -1;
-            const bPercent = b.stats.percent ?? -1;
-            cmp = aPercent - bPercent;
             break;
           case 'attempts':
             cmp = a.stats.total - b.stats.total;
