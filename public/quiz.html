@@ -462,10 +462,11 @@
       // Mark that hint was used
       hintUsed = true;
 
-      // Disable hint button if no more letters to reveal
+      // If this was the last letter, automatically check the answer
       const remainingEmpty = emptyIndices.length - 1;
       if (remainingEmpty === 0) {
-        document.getElementById('hintBtn').disabled = true;
+        checkAnswer();
+        return;
       }
 
       // Focus the next empty input
