@@ -153,6 +153,18 @@
     .skip-btn:hover {
       background: #545b62;
     }
+    .hint-btn {
+      background: #ffc107;
+      color: #212529;
+    }
+    .hint-btn:hover {
+      background: #e0a800;
+    }
+    .hint-btn:disabled {
+      background: #ccc;
+      color: #666;
+      cursor: not-allowed;
+    }
     .result {
       text-align: center;
       padding: 16px;
@@ -255,12 +267,14 @@
     const API_BASE = '';
     let currentClue = null;
     let submitted = false;
+    let hintUsed = false;
     let stats = { correct: 0, total: 0 };
 
     async function loadClue() {
       const container = document.getElementById('quiz');
       container.innerHTML = '<div class="loading">Loading clue...</div>';
       submitted = false;
+      hintUsed = false;
 
       try {
         const res = await fetch(`${API_BASE}/api/quiz`);
@@ -322,6 +336,7 @@
         <div id="result"></div>
         <div class="actions">
           <button class="submit-btn" id="submitBtn" onclick="checkAnswer()">Check Answer</button>
+          <button class="hint-btn" id="hintBtn" onclick="useHint()">Hint</button>
           <button class="skip-btn" onclick="skipClue()">Skip</button>
         </div>
       `;
@@ -416,6 +431,50 @@
       return null;
     }
 
+    function useHint() {
+      if (submitted) return;
+
+      const inputs = document.querySelectorAll('.letter-input');
+      const answer = currentClue.answer.toUpperCase();
+
+      // Find all empty or incorrect inputs
+      const emptyIndices = [];
+      inputs.forEach((input, idx) => {
+        const userChar = input.value.toUpperCase();
+        const correctChar = answer[idx];
+        if (!userChar || userChar !== correctChar) {
+          emptyIndices.push(idx);
+        }
+      });
+
+      if (emptyIndices.length === 0) return;
+
+      // Pick a random empty/incorrect position to reveal
+      const randomIdx = emptyIndices[Math.floor(Math.random() * emptyIndices.length)];
+      const input = inputs[randomIdx];
+      const correctChar = answer[randomIdx];
+
+      // Reveal the letter
+      input.value = correctChar;
+      input.classList.remove('empty', 'user-entered');
+      input.classList.add('from-pattern');
+
+      // Mark that hint was used
+      hintUsed = true;
+
+      // Disable hint button if no more letters to reveal
+      const remainingEmpty = emptyIndices.length - 1;
+      if (remainingEmpty === 0) {
+        document.getElementById('hintBtn').disabled = true;
+      }
+
+      // Focus the next empty input
+      const nextEmpty = findNextEmptyInput(randomIdx);
+      if (nextEmpty) {
+        nextEmpty.focus();
+      }
+    }
+
     async function checkAnswer() {
       if (submitted) return;
 
@@ -444,20 +503,28 @@
 
       submitted = true;
       stats.total++;
-      if (allCorrect) stats.correct++;
+
+      // Using a hint counts as incorrect
+      const countAsCorrect = allCorrect && !hintUsed;
+      if (countAsCorrect) stats.correct++;
 
       const resultDiv = document.getElementById('result');
-      resultDiv.innerHTML = allCorrect
-        ? '<div class="result correct">Correct!</div>'
-        : `<div class="result incorrect">Incorrect - the answer was ${answer}</div>`;
+      if (allCorrect && hintUsed) {
+        resultDiv.innerHTML = '<div class="result incorrect">Correct, but hint was used</div>';
+      } else if (allCorrect) {
+        resultDiv.innerHTML = '<div class="result correct">Correct!</div>';
+      } else {
+        resultDiv.innerHTML = `<div class="result incorrect">Incorrect - the answer was ${answer}</div>`;
+      }
 
       document.getElementById('submitBtn').outerHTML =
         '<button class="next-btn" onclick="loadClue()">Next Clue</button>';
+      document.getElementById('hintBtn').style.display = 'none';
 
       updateStats();
 
-      // Record attempt and show clue stats
-      await recordAttemptAndShowStats(allCorrect);
+      // Record attempt and show clue stats (hint usage counts as incorrect)
+      await recordAttemptAndShowStats(countAsCorrect);
     }
 
     async function skipClue() {
