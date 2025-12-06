@@ -56,18 +56,9 @@ async function getClues(req, res) {
         return res.status(404).json({ error: 'Puzzle not found' });
       }
 
-      // Fetch lifetime quiz stats for each clue (only for clues with answers)
+      // Fetch lifetime quiz stats for each clue
       const cluesWithStats = await Promise.all(
         record.clues.map(async (clue) => {
-          // Only fetch stats if clue has a complete answer
-          const pattern = clue.pattern || '';
-          const answer = clue.answer || '';
-          const hasAnswer = answer.length === pattern.length && answer.length > 0;
-
-          if (!hasAnswer) {
-            return { ...clue, quizStats: null };
-          }
-
           const clueId = `${clue.direction}-${clue.number}`;
           const quizKey = `quiz:${date}:${clueId}`;
           const attempts = await kv.get(quizKey) || [];
