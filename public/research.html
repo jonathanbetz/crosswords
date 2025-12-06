@@ -409,9 +409,12 @@
             saveTimeout = setTimeout(() => saveAnswer(letterContainer), 500);
           });
 
-          // Remove completed clue when focus leaves
+          // Remove completed clue when focus leaves (only if not in "show all" mode)
           input.addEventListener('blur', () => {
             setTimeout(() => {
+              // Don't hide completed clues in "show all" mode
+              if (showAll) return;
+
               // Check if focus moved outside this clue's inputs
               const activeElement = document.activeElement;
               const stillInSameClue = letterContainer.contains(activeElement);
