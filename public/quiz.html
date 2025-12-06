@@ -449,10 +449,10 @@
 
       if (emptyIndices.length === 0) return;
 
-      // Pick a random empty/incorrect position to reveal
-      const randomIdx = emptyIndices[Math.floor(Math.random() * emptyIndices.length)];
-      const input = inputs[randomIdx];
-      const correctChar = answer[randomIdx];
+      // Pick the left-most empty/incorrect position to reveal
+      const targetIdx = emptyIndices[0];
+      const input = inputs[targetIdx];
+      const correctChar = answer[targetIdx];
 
       // Reveal the letter
       input.value = correctChar;
@@ -470,7 +470,7 @@
       }
 
       // Focus the next empty input
-      const nextEmpty = findNextEmptyInput(randomIdx);
+      const nextEmpty = findNextEmptyInput(targetIdx);
       if (nextEmpty) {
         nextEmpty.focus();
       }
