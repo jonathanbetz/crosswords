@@ -11,6 +11,9 @@ export default async function handler(req, res) {
   }
 
   try {
+    const { all } = req.query;
+    const showAll = all === 'true';
+
     // Get all puzzle dates
     const dates = await kv.smembers('puzzle:dates');
 
@@ -18,8 +21,8 @@ export default async function handler(req, res) {
       return res.status(200).json({ clues: [] });
     }
 
-    // Collect all incomplete clues from all puzzles
-    const incompleteClues = [];
+    // Collect clues from all puzzles
+    const clues = [];
 
     for (const date of dates) {
       const key = `puzzle:${date}`;
@@ -30,10 +33,11 @@ export default async function handler(req, res) {
           // Skip ignored clues
           if (clue.ignored) continue;
 
-          // Include clues without answers or with incomplete answers
           const hasCompleteAnswer = clue.answer && clue.pattern && clue.answer.length === clue.pattern.length;
-          if (!hasCompleteAnswer) {
-            incompleteClues.push({
+
+          // Include all clues if showAll, otherwise only incomplete ones
+          if (showAll || !hasCompleteAnswer) {
+            clues.push({
               ...clue,
               puzzleDate: date,
               savedAt: record.savedAt || date // Fall back to puzzle date if savedAt not present
@@ -44,7 +48,7 @@ export default async function handler(req, res) {
     }
 
     // Sort by date added (most recent first), then by direction and number
-    incompleteClues.sort((a, b) => {
+    clues.sort((a, b) => {
       if (a.savedAt !== b.savedAt) {
         return b.savedAt.localeCompare(a.savedAt);
       }
@@ -55,8 +59,8 @@ export default async function handler(req, res) {
     });
 
     return res.status(200).json({
-      clues: incompleteClues,
-      total: incompleteClues.length
+      clues: clues,
+      total: clues.length
     });
   } catch (error) {
     console.error('Error getting incomplete clues:', error);
