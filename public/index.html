@@ -215,6 +215,21 @@
     .save-status.error {
       color: #f44336;
     }
+    .quiz-stats {
+      font-size: 11px;
+      color: #666;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+    .quiz-stats.good {
+      color: #28a745;
+    }
+    .quiz-stats.medium {
+      color: #ffc107;
+    }
+    .quiz-stats.poor {
+      color: #dc3545;
+    }
     .empty-state {
       text-align: center;
       padding: 60px 20px;
@@ -432,11 +447,24 @@
       const searchQuery = encodeURIComponent(`${clue.text} crossword clue`);
       const searchUrl = `https://www.google.com/search?q=${searchQuery}`;
 
+      // Build quiz stats display
+      let statsHtml = '';
+      if (clue.quizStats) {
+        const { correct, total } = clue.quizStats;
+        const pct = Math.round((correct / total) * 100);
+        let statsClass = 'quiz-stats';
+        if (pct >= 80) statsClass += ' good';
+        else if (pct >= 50) statsClass += ' medium';
+        else statsClass += ' poor';
+        statsHtml = `<span class="${statsClass}">${correct}/${total}</span>`;
+      }
+
       return `
         <li class="clue-item${isComplete ? ' complete' : ''}" data-clue-id="${clueId}">
           <div class="clue-row">
             <span class="clue-number">${clue.number}.</span>
             <span class="clue-text">${escapeHtml(clue.text)}</span>
+            ${statsHtml}
             <a href="${searchUrl}" target="_blank" rel="noopener" class="search-link" title="Search for clue">&#x1F50D;</a>
           </div>
           <div class="clue-answer-row">
