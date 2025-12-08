@@ -451,6 +451,9 @@
           } else if (e.key === 'Enter') {
             if (submitted) {
               loadClue();
+            } else if (!e.target.value) {
+              // Empty square - use hint for this square
+              useHintForSquare(idx);
             } else {
               checkAnswer();
             }
@@ -481,6 +484,43 @@
       return null;
     }
 
+    function useHintForSquare(targetIdx) {
+      if (submitted) return;
+
+      const inputs = document.querySelectorAll('.letter-input');
+      const answer = currentClue.answer.toUpperCase();
+      const input = inputs[targetIdx];
+      const correctChar = answer[targetIdx];
+
+      // Only reveal if the square is empty or incorrect
+      const userChar = input.value.toUpperCase();
+      if (userChar === correctChar) return;
+
+      // Reveal the letter
+      input.value = correctChar;
+      input.classList.remove('empty', 'user-entered');
+      input.classList.add('from-pattern');
+
+      // Mark that hint was used
+      hintUsed = true;
+
+      // Check if all squares are now filled correctly
+      const allFilled = Array.from(inputs).every((inp, idx) => {
+        return inp.value.toUpperCase() === answer[idx];
+      });
+
+      if (allFilled) {
+        checkAnswer();
+        return;
+      }
+
+      // Focus the next empty input
+      const nextEmpty = findNextEmptyInput(targetIdx);
+      if (nextEmpty) {
+        nextEmpty.focus();
+      }
+    }
+
     function useHint() {
       if (submitted) return;
 
@@ -501,29 +541,7 @@
 
       // Pick the left-most empty/incorrect position to reveal
       const targetIdx = emptyIndices[0];
-      const input = inputs[targetIdx];
-      const correctChar = answer[targetIdx];
-
-      // Reveal the letter
-      input.value = correctChar;
-      input.classList.remove('empty', 'user-entered');
-      input.classList.add('from-pattern');
-
-      // Mark that hint was used
-      hintUsed = true;
-
-      // If this was the last letter, automatically check the answer
-      const remainingEmpty = emptyIndices.length - 1;
-      if (remainingEmpty === 0) {
-        checkAnswer();
-        return;
-      }
-
-      // Focus the next empty input
-      const nextEmpty = findNextEmptyInput(targetIdx);
-      if (nextEmpty) {
-        nextEmpty.focus();
-      }
+      useHintForSquare(targetIdx);
     }
 
     async function checkAnswer() {
