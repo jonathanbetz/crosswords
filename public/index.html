@@ -84,6 +84,49 @@
     .date-btn.active .incomplete-count.complete {
       background: rgba(255,255,255,0.3);
     }
+    .date-btn.marked-complete {
+      opacity: 0.5;
+    }
+    .date-btn.marked-complete:not(.active) {
+      background: #e8f5e9;
+    }
+    .toggle-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .toggle-label {
+      font-size: 14px;
+      color: #666;
+      cursor: pointer;
+    }
+    .toggle-switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      background: #ccc;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle-switch.active {
+      background: #007bff;
+    }
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle-switch.active::after {
+      transform: translateX(20px);
+    }
     .clues-container {
       background: white;
       border-radius: 8px;
@@ -247,6 +290,28 @@
       border-radius: 6px;
       margin-bottom: 20px;
     }
+    .mark-complete-btn {
+      padding: 8px 16px;
+      border: 1px solid #28a745;
+      background: white;
+      color: #28a745;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    .mark-complete-btn:hover {
+      background: #28a745;
+      color: white;
+    }
+    .mark-complete-btn.completed {
+      background: #28a745;
+      color: white;
+    }
+    .mark-complete-btn.completed:hover {
+      background: #1e7e34;
+      border-color: #1e7e34;
+    }
   </style>
 </head>
 <body>
@@ -260,6 +325,11 @@
   </header>
   <p class="subtitle">Your unanswered clues for practice</p>
 
+  <div class="toggle-container">
+    <span class="toggle-label" onclick="toggleShowCompleted()">Include completed puzzles</span>
+    <div class="toggle-switch" id="showCompletedToggle" onclick="toggleShowCompleted()"></div>
+  </div>
+
   <div id="dates" class="date-list">
     <span class="loading">Loading dates...</span>
   </div>
@@ -270,6 +340,14 @@
 
   <script>
     const API_BASE = '';  // Same origin
+    let showCompleted = false;
+    let puzzlesData = [];
+
+    function toggleShowCompleted() {
+      showCompleted = !showCompleted;
+      document.getElementById('showCompletedToggle').classList.toggle('active', showCompleted);
+      renderDates();
+    }
 
     async function loadDates() {
       try {
@@ -283,32 +361,45 @@
           return;
         }
 
-        // Build a map of date -> stats for quick lookup
-        const statsMap = {};
-        if (data.puzzles) {
-          data.puzzles.forEach(p => {
-            statsMap[p.date] = p;
-          });
+        // Store puzzles data for filtering
+        puzzlesData = data.puzzles || [];
+
+        renderDates();
+
+        // Load the most recent non-completed puzzle by default, or just the first
+        const firstVisible = puzzlesData.find(p => !p.markedComplete) || puzzlesData[0];
+        if (firstVisible) {
+          loadClues(firstVisible.date);
         }
-
-        container.innerHTML = data.dates.map(date => {
-          const stats = statsMap[date];
-          const incomplete = stats ? stats.incomplete : 0;
-          const isComplete = incomplete === 0;
-          return `<button class="date-btn" data-date="${date}">${formatDate(date)}<span class="incomplete-count${isComplete ? ' complete' : ''}">${incomplete}</span></button>`;
-        }).join('');
-
-        // Add click handlers
-        container.querySelectorAll('.date-btn').forEach(btn => {
-          btn.addEventListener('click', () => loadClues(btn.dataset.date));
-        });
-
-        // Load the most recent by default
-        loadClues(data.dates[0]);
       } catch (err) {
         document.getElementById('dates').innerHTML =
           `<div class="error">Failed to load dates: ${err.message}</div>`;
       }
+    }
+
+    function renderDates() {
+      const container = document.getElementById('dates');
+
+      // Filter puzzles based on toggle
+      const visiblePuzzles = showCompleted
+        ? puzzlesData
+        : puzzlesData.filter(p => !p.markedComplete);
+
+      if (visiblePuzzles.length === 0) {
+        container.innerHTML = '<span class="empty-state">No puzzles to show</span>';
+        return;
+      }
+
+      container.innerHTML = visiblePuzzles.map(p => {
+        const isComplete = p.incomplete === 0;
+        const markedComplete = p.markedComplete || false;
+        return `<button class="date-btn${markedComplete ? ' marked-complete' : ''}" data-date="${p.date}">${formatDate(p.date)}<span class="incomplete-count${isComplete ? ' complete' : ''}">${p.incomplete}</span></button>`;
+      }).join('');
+
+      // Add click handlers
+      container.querySelectorAll('.date-btn').forEach(btn => {
+        btn.addEventListener('click', () => loadClues(btn.dataset.date));
+      });
     }
 
     async function loadClues(date) {
@@ -332,10 +423,17 @@
         const across = data.clues.filter(c => c.direction === 'across');
         const down = data.clues.filter(c => c.direction === 'down');
 
+        // Get markedComplete status from puzzlesData
+        const puzzleInfo = puzzlesData.find(p => p.date === date);
+        const isMarkedComplete = puzzleInfo?.markedComplete || false;
+
         container.innerHTML = `
           <div class="clues-header">
             <h2>${formatDate(date)}</h2>
-            <span class="clue-count">${data.clues.length} clues</span>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span class="clue-count">${data.clues.length} clues</span>
+              <button class="mark-complete-btn${isMarkedComplete ? ' completed' : ''}" onclick="togglePuzzleComplete('${date}')">${isMarkedComplete ? 'Completed' : 'Mark Complete'}</button>
+            </div>
           </div>
           <div class="clues-grid">
             <div class="clue-section">
@@ -562,6 +660,35 @@
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    async function togglePuzzleComplete(date) {
+      const puzzleInfo = puzzlesData.find(p => p.date === date);
+      const newStatus = !puzzleInfo?.markedComplete;
+
+      try {
+        const res = await fetch(`${API_BASE}/api/puzzle/${date}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ markedComplete: newStatus })
+        });
+
+        if (!res.ok) {
+          throw new Error('Failed to update puzzle');
+        }
+
+        // Update local data
+        if (puzzleInfo) {
+          puzzleInfo.markedComplete = newStatus;
+        }
+
+        // Re-render dates and clues
+        renderDates();
+        loadClues(date);
+      } catch (err) {
+        console.error('Error toggling puzzle complete:', err);
+        alert('Failed to update puzzle status');
+      }
     }
 
     // Load on page ready

@@ -245,6 +245,43 @@
       border-radius: 8px;
       text-align: center;
     }
+    .toggle-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .toggle-label {
+      font-size: 14px;
+      color: #666;
+      cursor: pointer;
+    }
+    .toggle-switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      background: #ccc;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle-switch.active {
+      background: #007bff;
+    }
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle-switch.active::after {
+      transform: translateX(20px);
+    }
   </style>
 </head>
 <body>
@@ -256,6 +293,11 @@
       <a href="/performance.html" class="nav-link">Performance</a>
     </div>
   </header>
+
+  <div class="toggle-container">
+    <span class="toggle-label" onclick="toggleIncludeCompleted()">Include completed puzzles</span>
+    <div class="toggle-switch" id="includeCompletedToggle" onclick="toggleIncludeCompleted()"></div>
+  </div>
 
   <div id="quiz" class="quiz-card">
     <div class="loading">Loading clue...</div>
@@ -269,6 +311,13 @@
     let submitted = false;
     let hintUsed = false;
     let stats = { correct: 0, total: 0 };
+    let includeCompleted = false;
+
+    function toggleIncludeCompleted() {
+      includeCompleted = !includeCompleted;
+      document.getElementById('includeCompletedToggle').classList.toggle('active', includeCompleted);
+      loadClue();
+    }
 
     async function loadClue() {
       const container = document.getElementById('quiz');
@@ -277,7 +326,8 @@
       hintUsed = false;
 
       try {
-        const res = await fetch(`${API_BASE}/api/quiz`);
+        const url = includeCompleted ? `${API_BASE}/api/quiz?includeCompleted=true` : `${API_BASE}/api/quiz`;
+        const res = await fetch(url);
         const data = await res.json();
 
         if (!res.ok) {

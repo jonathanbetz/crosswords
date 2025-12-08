@@ -91,7 +91,7 @@ async function getClues(req, res) {
       const puzzles = await Promise.all(
         sortedDates.map(async (d) => {
           const record = await kv.get(`puzzle:${d}`);
-          if (!record) return { date: d, total: 0, incomplete: 0 };
+          if (!record) return { date: d, total: 0, incomplete: 0, markedComplete: false };
 
           const total = record.clues.length;
           const incomplete = record.clues.filter(c => {
@@ -100,7 +100,7 @@ async function getClues(req, res) {
             return answer.length !== pattern.length || answer.length === 0;
           }).length;
 
-          return { date: d, total, incomplete };
+          return { date: d, total, incomplete, markedComplete: record.markedComplete || false };
         })
       );
 

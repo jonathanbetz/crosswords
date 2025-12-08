@@ -234,6 +234,11 @@
     <div class="toggle-switch" id="showAllToggle" onclick="toggleShowAll()"></div>
   </div>
 
+  <div class="toggle-container">
+    <span class="toggle-label" onclick="toggleIncludeCompleted()">Include completed puzzles</span>
+    <div class="toggle-switch" id="includeCompletedToggle" onclick="toggleIncludeCompleted()"></div>
+  </div>
+
   <div id="clues" class="clues-container">
     <div class="loading">Loading incomplete clues...</div>
   </div>
@@ -241,6 +246,7 @@
   <script>
     const API_BASE = '';
     let showAll = false;
+    let includeCompleted = false;
 
     function toggleShowAll() {
       showAll = !showAll;
@@ -248,11 +254,20 @@
       loadClues();
     }
 
+    function toggleIncludeCompleted() {
+      includeCompleted = !includeCompleted;
+      document.getElementById('includeCompletedToggle').classList.toggle('active', includeCompleted);
+      loadClues();
+    }
+
     async function loadClues() {
       const container = document.getElementById('clues');
 
       try {
-        const url = showAll ? `${API_BASE}/api/incomplete?all=true` : `${API_BASE}/api/incomplete`;
+        const params = new URLSearchParams();
+        if (showAll) params.set('all', 'true');
+        if (includeCompleted) params.set('includeCompleted', 'true');
+        const url = `${API_BASE}/api/incomplete${params.toString() ? '?' + params.toString() : ''}`;
         const res = await fetch(url);
         const data = await res.json();
 
