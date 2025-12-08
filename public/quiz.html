@@ -555,6 +555,11 @@
 
       const inputs = document.querySelectorAll('.letter-input');
       const answer = currentClue.answer.toUpperCase();
+
+      // Don't allow checking if any squares are empty
+      const hasEmpty = Array.from(inputs).some(input => !input.value);
+      if (hasEmpty) return;
+
       let userAnswer = '';
       let allCorrect = true;
 
