@@ -365,12 +365,29 @@
         // Store puzzles data for filtering
         puzzlesData = data.puzzles || [];
 
+        // Check for date in URL query parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const requestedDate = urlParams.get('date');
+
+        // If requested date exists in a completed puzzle, enable the toggle
+        if (requestedDate) {
+          const requestedPuzzle = puzzlesData.find(p => p.date === requestedDate);
+          if (requestedPuzzle && requestedPuzzle.markedComplete) {
+            showCompleted = true;
+            document.getElementById('showCompletedToggle').classList.add('active');
+          }
+        }
+
         renderDates();
 
-        // Load the most recent non-completed puzzle by default, or just the first
-        const firstVisible = puzzlesData.find(p => !p.markedComplete) || puzzlesData[0];
-        if (firstVisible) {
-          loadClues(firstVisible.date);
+        // Load requested date from URL, or fall back to most recent non-completed puzzle
+        if (requestedDate && puzzlesData.some(p => p.date === requestedDate)) {
+          loadClues(requestedDate);
+        } else {
+          const firstVisible = puzzlesData.find(p => !p.markedComplete) || puzzlesData[0];
+          if (firstVisible) {
+            loadClues(firstVisible.date);
+          }
         }
       } catch (err) {
         document.getElementById('dates').innerHTML =
