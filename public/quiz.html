@@ -99,6 +99,11 @@
       background: #e8f5e9;
       border-color: #a5d6a7;
     }
+    .letter-input.from-hint {
+      color: #856404;
+      background: #fff3cd;
+      border-color: #ffc107;
+    }
     .letter-input.user-entered {
       color: #333;
     }
@@ -499,8 +504,8 @@
 
       // Reveal the letter
       input.value = correctChar;
-      input.classList.remove('empty', 'user-entered');
-      input.classList.add('from-pattern');
+      input.classList.remove('empty', 'user-entered', 'from-pattern');
+      input.classList.add('from-hint');
 
       // Mark that hint was used
       hintUsed = true;
