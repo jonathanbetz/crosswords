@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Puzzle List - Crossword Trainer</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+      color: #333;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    h1 {
+      margin: 0;
+    }
+    .nav-links {
+      display: flex;
+      gap: 16px;
+    }
+    .nav-link {
+      color: #007bff;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .nav-link:hover {
+      text-decoration: underline;
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+    }
+    .controls {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .sort-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .sort-control label {
+      font-size: 14px;
+      color: #666;
+    }
+    .sort-control select {
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      background: white;
+      cursor: pointer;
+    }
+    .toggle-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .toggle-label {
+      font-size: 14px;
+      color: #666;
+      cursor: pointer;
+    }
+    .toggle-switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      background: #ccc;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle-switch.active {
+      background: #007bff;
+    }
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle-switch.active::after {
+      transform: translateX(20px);
+    }
+    .puzzles-container {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .puzzle-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .puzzle-item {
+      padding: 16px;
+      border-bottom: 1px solid #f0f0f0;
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 16px;
+      align-items: center;
+    }
+    .puzzle-item:last-child {
+      border-bottom: none;
+    }
+    .puzzle-item.marked-complete {
+      opacity: 0.6;
+      background: #f8fff8;
+    }
+    .puzzle-date {
+      font-weight: 600;
+      color: #333;
+    }
+    .puzzle-date a {
+      color: inherit;
+      text-decoration: none;
+    }
+    .puzzle-date a:hover {
+      color: #007bff;
+      text-decoration: underline;
+    }
+    .puzzle-stats {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      text-align: right;
+    }
+    .stat-row {
+      font-size: 13px;
+      color: #666;
+    }
+    .stat-label {
+      color: #999;
+    }
+    .stat-value {
+      font-weight: 600;
+    }
+    .stat-value.good {
+      color: #28a745;
+    }
+    .stat-value.medium {
+      color: #ffc107;
+    }
+    .stat-value.poor {
+      color: #dc3545;
+    }
+    .quiz-stats {
+      min-width: 120px;
+      text-align: right;
+    }
+    .progress-bar {
+      width: 100px;
+      height: 8px;
+      background: #e9ecef;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+    .progress-fill {
+      height: 100%;
+      background: #007bff;
+      transition: width 0.3s;
+    }
+    .progress-fill.complete {
+      background: #28a745;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #666;
+    }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+    .error {
+      background: #fee;
+      color: #c00;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 600px) {
+      .puzzle-item {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+      .puzzle-stats, .quiz-stats {
+        text-align: left;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Puzzle List</h1>
+    <div class="nav-links">
+      <a href="/" class="nav-link">Clues</a>
+      <a href="/research.html" class="nav-link">Research</a>
+      <a href="/quiz.html" class="nav-link">Quiz</a>
+      <a href="/performance.html" class="nav-link">Performance</a>
+    </div>
+  </header>
+  <p class="subtitle">All puzzles sorted by progress and performance</p>
+
+  <div class="controls">
+    <div class="sort-control">
+      <label for="sortBy">Sort by:</label>
+      <select id="sortBy" onchange="sortPuzzles()">
+        <option value="date">Date (newest first)</option>
+        <option value="complete">Clues completed (most first)</option>
+        <option value="incomplete">Clues incomplete (most first)</option>
+        <option value="quiz-best">Quiz accuracy (best first)</option>
+        <option value="quiz-worst">Quiz accuracy (worst first)</option>
+      </select>
+    </div>
+    <div class="toggle-container">
+      <span class="toggle-label" onclick="toggleIncludeCompleted()">Include completed puzzles</span>
+      <div class="toggle-switch" id="includeCompletedToggle" onclick="toggleIncludeCompleted()"></div>
+    </div>
+  </div>
+
+  <div id="puzzles" class="puzzles-container">
+    <div class="loading">Loading puzzles...</div>
+  </div>
+
+  <script>
+    const API_BASE = '';
+    let puzzlesData = [];
+    let includeCompleted = false;
+
+    function toggleIncludeCompleted() {
+      includeCompleted = !includeCompleted;
+      document.getElementById('includeCompletedToggle').classList.toggle('active', includeCompleted);
+      renderPuzzles();
+    }
+
+    async function loadPuzzles() {
+      const container = document.getElementById('puzzles');
+
+      try {
+        const res = await fetch(`${API_BASE}/api/puzzle-stats`);
+        const data = await res.json();
+
+        if (!data.puzzles || data.puzzles.length === 0) {
+          container.innerHTML = '<div class="empty-state">No puzzles found</div>';
+          return;
+        }
+
+        puzzlesData = data.puzzles;
+        sortPuzzles();
+      } catch (err) {
+        container.innerHTML = `<div class="error">Failed to load puzzles: ${err.message}</div>`;
+      }
+    }
+
+    function sortPuzzles() {
+      const sortBy = document.getElementById('sortBy').value;
+
+      const sorted = [...puzzlesData].sort((a, b) => {
+        switch (sortBy) {
+          case 'date':
+            return b.date.localeCompare(a.date);
+          case 'complete':
+            return b.complete - a.complete;
+          case 'incomplete':
+            return b.incomplete - a.incomplete;
+          case 'quiz-best':
+            // Puzzles with no quiz data go to the end
+            if (a.weeklyQuizStats.percent === null && b.weeklyQuizStats.percent === null) return 0;
+            if (a.weeklyQuizStats.percent === null) return 1;
+            if (b.weeklyQuizStats.percent === null) return -1;
+            return b.weeklyQuizStats.percent - a.weeklyQuizStats.percent;
+          case 'quiz-worst':
+            // Puzzles with no quiz data go to the end
+            if (a.weeklyQuizStats.percent === null && b.weeklyQuizStats.percent === null) return 0;
+            if (a.weeklyQuizStats.percent === null) return 1;
+            if (b.weeklyQuizStats.percent === null) return -1;
+            return a.weeklyQuizStats.percent - b.weeklyQuizStats.percent;
+          default:
+            return 0;
+        }
+      });
+
+      puzzlesData = sorted;
+      renderPuzzles();
+    }
+
+    function renderPuzzles() {
+      const container = document.getElementById('puzzles');
+
+      // Filter puzzles based on toggle
+      const visiblePuzzles = includeCompleted
+        ? puzzlesData
+        : puzzlesData.filter(p => !p.markedComplete);
+
+      if (visiblePuzzles.length === 0) {
+        container.innerHTML = '<div class="empty-state">No puzzles to show</div>';
+        return;
+      }
+
+      container.innerHTML = `
+        <ul class="puzzle-list">
+          ${visiblePuzzles.map(p => renderPuzzle(p)).join('')}
+        </ul>
+      `;
+    }
+
+    function renderPuzzle(puzzle) {
+      const completePct = puzzle.total > 0 ? Math.round((puzzle.complete / puzzle.total) * 100) : 0;
+      const isFullyComplete = puzzle.complete === puzzle.total && puzzle.total > 0;
+
+      // Quiz stats styling
+      let quizClass = '';
+      if (puzzle.weeklyQuizStats.percent !== null) {
+        if (puzzle.weeklyQuizStats.percent >= 80) quizClass = 'good';
+        else if (puzzle.weeklyQuizStats.percent >= 50) quizClass = 'medium';
+        else quizClass = 'poor';
+      }
+
+      const quizDisplay = puzzle.weeklyQuizStats.percent !== null
+        ? `${puzzle.weeklyQuizStats.percent}% (${puzzle.weeklyQuizStats.correct}/${puzzle.weeklyQuizStats.total})`
+        : 'No quiz data';
+
+      return `
+        <li class="puzzle-item${puzzle.markedComplete ? ' marked-complete' : ''}">
+          <div class="puzzle-date">
+            <a href="/?date=${puzzle.date}">${formatDate(puzzle.date)}</a>
+            ${puzzle.markedComplete ? ' <span style="color: #28a745; font-size: 12px;">(completed)</span>' : ''}
+          </div>
+          <div class="puzzle-stats">
+            <div class="stat-row">
+              <span class="stat-label">Clues filled: </span>
+              <span class="stat-value">${puzzle.complete}/${puzzle.total}</span>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill${isFullyComplete ? ' complete' : ''}" style="width: ${completePct}%"></div>
+            </div>
+          </div>
+          <div class="quiz-stats">
+            <div class="stat-row">
+              <span class="stat-label">Quiz (7d): </span>
+              <span class="stat-value ${quizClass}">${quizDisplay}</span>
+            </div>
+          </div>
+        </li>
+      `;
+    }
+
+    function formatDate(dateStr) {
+      const date = new Date(dateStr + 'T00:00:00');
+      return date.toLocaleDateString('en-US', {
+        weekday: 'short',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    }
+
+    // Load on page ready
+    loadPuzzles();
+  </script>
+</body>
+</html>
