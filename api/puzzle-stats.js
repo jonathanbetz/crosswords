@@ -43,6 +43,8 @@ export default async function handler(req, res) {
         let incomplete = 0;
 
         // Count complete/incomplete clues and gather quiz stats
+        // Accuracy is computed as average of each clue's accuracy (0% for clues with no attempts)
+        let clueAccuracySum = 0;
         let weeklyTotal = 0;
         let weeklyCorrect = 0;
 
@@ -64,9 +66,19 @@ export default async function handler(req, res) {
 
           // Filter to last week only
           const weeklyAttempts = attempts.filter(a => a.timestamp >= weekAgo);
-          weeklyTotal += weeklyAttempts.length;
-          weeklyCorrect += weeklyAttempts.filter(a => a.correct).length;
+          const clueWeeklyTotal = weeklyAttempts.length;
+          const clueWeeklyCorrect = weeklyAttempts.filter(a => a.correct).length;
+
+          weeklyTotal += clueWeeklyTotal;
+          weeklyCorrect += clueWeeklyCorrect;
+
+          // Clue accuracy: 0% if no attempts, otherwise correct/total
+          const clueAccuracy = clueWeeklyTotal > 0 ? clueWeeklyCorrect / clueWeeklyTotal : 0;
+          clueAccuracySum += clueAccuracy;
         }
+
+        // Average accuracy across all clues
+        const averageAccuracy = total > 0 ? Math.round((clueAccuracySum / total) * 100) : null;
 
         return {
           date,
@@ -77,7 +89,7 @@ export default async function handler(req, res) {
           weeklyQuizStats: {
             total: weeklyTotal,
             correct: weeklyCorrect,
-            percent: weeklyTotal > 0 ? Math.round((weeklyCorrect / weeklyTotal) * 100) : null
+            percent: averageAccuracy
           }
         };
       })
