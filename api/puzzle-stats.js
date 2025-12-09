@@ -38,7 +38,9 @@ export default async function handler(req, res) {
           };
         }
 
-        const total = record.clues.length;
+        // Filter out ignored clues
+        const activeClues = record.clues.filter(c => !c.ignored);
+        const total = activeClues.length;
         let complete = 0;
         let incomplete = 0;
 
@@ -49,7 +51,7 @@ export default async function handler(req, res) {
         let weeklyTotal = 0;
         let weeklyCorrect = 0;
 
-        for (const clue of record.clues) {
+        for (const clue of activeClues) {
           const pattern = clue.pattern || '';
           const answer = clue.answer || '';
           const hasCompleteAnswer = answer.length === pattern.length && answer.length > 0;

@@ -93,8 +93,9 @@ async function getClues(req, res) {
           const record = await kv.get(`puzzle:${d}`);
           if (!record) return { date: d, total: 0, incomplete: 0, markedComplete: false };
 
-          const total = record.clues.length;
-          const incomplete = record.clues.filter(c => {
+          const nonIgnoredClues = record.clues.filter(c => !c.ignored);
+          const total = nonIgnoredClues.length;
+          const incomplete = nonIgnoredClues.filter(c => {
             const pattern = c.pattern || '';
             const answer = c.answer || '';
             return answer.length !== pattern.length || answer.length === 0;
