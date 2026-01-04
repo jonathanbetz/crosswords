@@ -22,9 +22,56 @@
       justify-content: space-between;
       align-items: center;
       margin-bottom: 30px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
     h1 {
       margin: 0;
+    }
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .status-indicator.offline {
+      background: #fff3cd;
+      color: #856404;
+    }
+    .status-indicator.syncing {
+      background: #cce5ff;
+      color: #004085;
+    }
+    .status-indicator.online {
+      background: #d4edda;
+      color: #155724;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .status-indicator.offline .status-dot {
+      background: #ffc107;
+    }
+    .status-indicator.syncing .status-dot {
+      background: #007bff;
+      animation: pulse 1s infinite;
+    }
+    .status-indicator.online .status-dot {
+      background: #28a745;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
     }
     .nav-links {
       display: flex;
@@ -292,7 +339,13 @@
 </head>
 <body>
   <header>
-    <h1>Quiz Mode</h1>
+    <div class="header-left">
+      <h1>Quiz Mode</h1>
+      <div id="statusIndicator" class="status-indicator online" style="display: none;">
+        <span class="status-dot"></span>
+        <span id="statusText">Online</span>
+      </div>
+    </div>
     <div class="nav-links">
       <a href="/" class="nav-link">Clues</a>
       <a href="/puzzles.html" class="nav-link">Puzzles</a>
@@ -313,19 +366,445 @@
   <div id="stats" class="stats"></div>
 
   <script>
+    // === CONFIGURATION ===
     const API_BASE = '';
+    const DB_NAME = 'crossword-quiz-offline';
+    const DB_VERSION = 1;
+
+    // === STATE ===
     let currentClue = null;
     let submitted = false;
     let hintUsed = false;
-    let stats = { correct: 0, total: 0 };
+    let sessionStats = { correct: 0, total: 0 };
     let includeCompleted = false;
+    let isOnline = navigator.onLine;
+    let db = null;
+    let syncInProgress = false;
+
+    // === INDEXEDDB ===
+    function openDatabase() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          db = request.result;
+          resolve(db);
+        };
+
+        request.onupgradeneeded = (event) => {
+          const database = event.target.result;
+
+          // Store for clues
+          if (!database.objectStoreNames.contains('clues')) {
+            const clueStore = database.createObjectStore('clues', { keyPath: 'key' });
+            clueStore.createIndex('puzzleDate', 'puzzleDate', { unique: false });
+          }
+
+          // Store for attempts
+          if (!database.objectStoreNames.contains('attempts')) {
+            database.createObjectStore('attempts', { keyPath: 'key' });
+          }
+
+          // Store for pending attempts (to sync later)
+          if (!database.objectStoreNames.contains('pendingAttempts')) {
+            const pendingStore = database.createObjectStore('pendingAttempts', { keyPath: 'id', autoIncrement: true });
+            pendingStore.createIndex('clueKey', 'clueKey', { unique: false });
+          }
+
+          // Store for sync metadata
+          if (!database.objectStoreNames.contains('syncMeta')) {
+            database.createObjectStore('syncMeta', { keyPath: 'key' });
+          }
+        };
+      });
+    }
+
+    function dbTransaction(storeNames, mode = 'readonly') {
+      return db.transaction(storeNames, mode);
+    }
+
+    async function saveClues(clues) {
+      return new Promise((resolve, reject) => {
+        const tx = dbTransaction(['clues', 'attempts'], 'readwrite');
+        const clueStore = tx.objectStore('clues');
+        const attemptStore = tx.objectStore('attempts');
+
+        for (const clue of clues) {
+          const key = `${clue.puzzleDate}:${clue.direction}-${clue.number}`;
+          clueStore.put({
+            key,
+            puzzleDate: clue.puzzleDate,
+            direction: clue.direction,
+            number: clue.number,
+            text: clue.text,
+            pattern: clue.pattern,
+            answer: clue.answer
+          });
+
+          // Also store attempts
+          attemptStore.put({
+            key,
+            attempts: clue.attempts || []
+          });
+        }
+
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    async function getAllClues() {
+      return new Promise((resolve, reject) => {
+        const tx = dbTransaction('clues');
+        const store = tx.objectStore('clues');
+        const request = store.getAll();
+
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function getAttempts(clueKey) {
+      return new Promise((resolve, reject) => {
+        const tx = dbTransaction('attempts');
+        const store = tx.objectStore('attempts');
+        const request = store.get(clueKey);
+
+        request.onsuccess = () => resolve(request.result?.attempts || []);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function saveLocalAttempt(clueKey, attempt) {
+      return new Promise((resolve, reject) => {
+        const tx = dbTransaction('attempts', 'readwrite');
+        const store = tx.objectStore('attempts');
+        const request = store.get(clueKey);
+
+        request.onsuccess = () => {
+          const record = request.result || { key: clueKey, attempts: [] };
+          record.attempts.push(attempt);
+          store.put(record);
+        };
+
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    async function queuePendingAttempt(clueKey, timestamp, correct) {
+      return new Promise((resolve, reject) => {
+        const tx = dbTransaction('pendingAttempts', 'readwrite');
+        const store = tx.objectStore('pendingAttempts');
+        store.add({ clueKey, timestamp, correct });
+
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    async function getPendingAttempts() {
+      return new Promise((resolve, reject) => {
+        const tx = dbTransaction('pendingAttempts');
+        const store = tx.objectStore('pendingAttempts');
+        const request = store.getAll();
+
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function removePendingAttempt(id) {
+      return new Promise((resolve, reject) => {
+        const tx = dbTransaction('pendingAttempts', 'readwrite');
+        const store = tx.objectStore('pendingAttempts');
+        store.delete(id);
+
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    async function getSyncMeta() {
+      return new Promise((resolve, reject) => {
+        const tx = dbTransaction('syncMeta');
+        const store = tx.objectStore('syncMeta');
+        const request = store.get('lastSync');
+
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function setSyncMeta(meta) {
+      return new Promise((resolve, reject) => {
+        const tx = dbTransaction('syncMeta', 'readwrite');
+        const store = tx.objectStore('syncMeta');
+        store.put({ key: 'lastSync', ...meta });
+
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    // === SPACED REPETITION ALGORITHM ===
+    // (Ported from api/quiz.js)
+
+    function calculateWilsonLower(successes, total) {
+      if (total === 0) return 0;
+
+      const z = 1.96; // 95% confidence
+      const p = successes / total;
+      const z2 = z * z;
+      const n = total;
+
+      const numerator = p + z2 / (2 * n) - z * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n);
+      const denominator = 1 + z2 / n;
+
+      return numerator / denominator;
+    }
+
+    function calculateMinInterval(wilsonLower, total) {
+      if (total === 0) return 0;
+
+      const baseMinutes = 1;
+      const maxMinutes = 240; // 4 hours
+
+      const scaleFactor = Math.pow(wilsonLower, 2) * maxMinutes + baseMinutes;
+      const attemptBonus = Math.min(total / 10, 1);
+      const adjustedMinutes = scaleFactor * (1 + attemptBonus * wilsonLower);
+
+      return adjustedMinutes * 60 * 1000; // Convert to milliseconds
+    }
+
+    function calculatePriority(wilsonLower, total, lastAttemptTime, now) {
+      if (total === 0) return -1000; // Never attempted - highest priority
+
+      const minInterval = calculateMinInterval(wilsonLower, total);
+      const timeSinceLastAttempt = now - lastAttemptTime;
+
+      if (timeSinceLastAttempt < minInterval) {
+        const remainingRatio = (minInterval - timeSinceLastAttempt) / minInterval;
+        return 1000 + remainingRatio * 1000;
+      }
+
+      const overdueRatio = timeSinceLastAttempt / minInterval;
+      const overduePenalty = Math.min(overdueRatio - 1, 5) * 0.1;
+
+      return wilsonLower - overduePenalty;
+    }
+
+    // === CLUE SELECTION ===
+    async function selectNextClue() {
+      const allClues = await getAllClues();
+      if (allClues.length === 0) return null;
+
+      const now = Date.now();
+      const cluesWithScores = [];
+
+      for (const clue of allClues) {
+        const attempts = await getAttempts(clue.key);
+        const total = attempts.length;
+        const correct = attempts.filter(a => a.correct).length;
+        const wilsonLower = calculateWilsonLower(correct, total);
+        const lastAttemptTime = total > 0 ? Math.max(...attempts.map(a => a.timestamp)) : 0;
+        const priority = calculatePriority(wilsonLower, total, lastAttemptTime, now);
+
+        cluesWithScores.push({
+          ...clue,
+          total,
+          correct,
+          wilsonLower,
+          priority,
+          lastAttemptTime
+        });
+      }
+
+      // Sort by priority (ascending)
+      cluesWithScores.sort((a, b) => {
+        const diff = a.priority - b.priority;
+        if (Math.abs(diff) < 0.1) return Math.random() - 0.5;
+        return diff;
+      });
+
+      // Weighted selection from top 5
+      const topCount = Math.min(5, cluesWithScores.length);
+      const weights = [];
+      for (let i = 0; i < topCount; i++) {
+        weights.push(topCount - i);
+      }
+      const totalWeight = weights.reduce((a, b) => a + b, 0);
+      let rand = Math.random() * totalWeight;
+      let selectedIndex = 0;
+      for (let i = 0; i < topCount; i++) {
+        rand -= weights[i];
+        if (rand <= 0) {
+          selectedIndex = i;
+          break;
+        }
+      }
+
+      return cluesWithScores[selectedIndex];
+    }
+
+    // === OFFLINE SYNC LOGIC ===
+    async function syncFromServer() {
+      if (!isOnline) return false;
+
+      try {
+        updateStatusIndicator('syncing');
+        const url = includeCompleted
+          ? `${API_BASE}/api/quiz-bulk?includeCompleted=true`
+          : `${API_BASE}/api/quiz-bulk`;
+
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Failed to fetch');
+
+        const data = await res.json();
+        await saveClues(data.clues);
+        await setSyncMeta({ timestamp: data.fetchedAt, includeCompleted });
+
+        updateStatusIndicator('online');
+        return true;
+      } catch (err) {
+        console.error('Sync from server failed:', err);
+        updateStatusIndicator(isOnline ? 'online' : 'offline');
+        return false;
+      }
+    }
+
+    async function syncPendingAttempts() {
+      if (!isOnline || syncInProgress) return;
+      syncInProgress = true;
+
+      try {
+        const pending = await getPendingAttempts();
+        if (pending.length === 0) {
+          syncInProgress = false;
+          return;
+        }
+
+        updateStatusIndicator('syncing');
+
+        for (const attempt of pending) {
+          const [puzzleDate, clueId] = attempt.clueKey.split(':');
+
+          try {
+            await fetch(`${API_BASE}/api/quiz-attempt`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ clueId, puzzleDate, correct: attempt.correct })
+            });
+            await removePendingAttempt(attempt.id);
+          } catch (err) {
+            console.error('Failed to sync attempt:', err);
+            break; // Stop on first failure, will retry later
+          }
+        }
+
+        updateStatusIndicator('online');
+      } finally {
+        syncInProgress = false;
+      }
+    }
+
+    async function recordAttempt(clueKey, correct) {
+      const timestamp = Date.now();
+
+      // Always save locally
+      await saveLocalAttempt(clueKey, { timestamp, correct });
+
+      if (isOnline) {
+        try {
+          const [puzzleDate, clueId] = clueKey.split(':');
+          const res = await fetch(`${API_BASE}/api/quiz-attempt`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clueId, puzzleDate, correct })
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            return data.stats;
+          }
+        } catch (err) {
+          console.error('Failed to record attempt online:', err);
+        }
+        // If online request failed, queue for later
+        await queuePendingAttempt(clueKey, timestamp, correct);
+      } else {
+        await queuePendingAttempt(clueKey, timestamp, correct);
+      }
+
+      // Return local stats
+      return calculateLocalStats(clueKey);
+    }
+
+    async function calculateLocalStats(clueKey) {
+      const attempts = await getAttempts(clueKey);
+      const now = Date.now();
+      const hourAgo = now - 60 * 60 * 1000;
+      const dayAgo = now - 24 * 60 * 60 * 1000;
+      const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+
+      const calcStats = (filtered) => {
+        const total = filtered.length;
+        const correct = filtered.filter(a => a.correct).length;
+        const percent = total > 0 ? Math.round((correct / total) * 100) : 0;
+        return { total, correct, percent };
+      };
+
+      return {
+        lifetime: calcStats(attempts),
+        lastWeek: calcStats(attempts.filter(a => a.timestamp >= weekAgo)),
+        lastDay: calcStats(attempts.filter(a => a.timestamp >= dayAgo)),
+        lastHour: calcStats(attempts.filter(a => a.timestamp >= hourAgo))
+      };
+    }
+
+    // === UI STATUS ===
+    function updateStatusIndicator(status) {
+      const indicator = document.getElementById('statusIndicator');
+      const text = document.getElementById('statusText');
+
+      indicator.style.display = 'flex';
+      indicator.className = 'status-indicator ' + status;
+
+      if (status === 'offline') {
+        text.textContent = 'Offline';
+      } else if (status === 'syncing') {
+        text.textContent = 'Syncing...';
+      } else {
+        text.textContent = 'Online';
+      }
+    }
+
+    // === EVENT HANDLERS ===
+    window.addEventListener('online', () => {
+      isOnline = true;
+      updateStatusIndicator('online');
+      syncPendingAttempts();
+      syncFromServer();
+    });
+
+    window.addEventListener('offline', () => {
+      isOnline = false;
+      updateStatusIndicator('offline');
+    });
 
     function toggleIncludeCompleted() {
       includeCompleted = !includeCompleted;
       document.getElementById('includeCompletedToggle').classList.toggle('active', includeCompleted);
-      loadClue();
+      // Refresh from server if online
+      if (isOnline) {
+        syncFromServer().then(() => loadClue());
+      } else {
+        loadClue();
+      }
     }
 
+    // === QUIZ FUNCTIONS ===
     async function loadClue() {
       const container = document.getElementById('quiz');
       container.innerHTML = '<div class="loading">Loading clue...</div>';
@@ -333,15 +812,13 @@
       hintUsed = false;
 
       try {
-        const url = includeCompleted ? `${API_BASE}/api/quiz?includeCompleted=true` : `${API_BASE}/api/quiz`;
-        const res = await fetch(url);
-        const data = await res.json();
+        const clue = await selectNextClue();
 
-        if (!res.ok) {
-          throw new Error(data.error || 'Failed to load clue');
+        if (!clue) {
+          throw new Error('No clues available. Go online to sync clues.');
         }
 
-        currentClue = data.clue;
+        currentClue = clue;
         renderClue();
       } catch (err) {
         container.innerHTML = `<div class="error">${err.message}</div>`;
@@ -589,11 +1066,11 @@
       });
 
       submitted = true;
-      stats.total++;
+      sessionStats.total++;
 
       // Using a hint counts as incorrect
       const countAsCorrect = allCorrect && !hintUsed;
-      if (countAsCorrect) stats.correct++;
+      if (countAsCorrect) sessionStats.correct++;
 
       const resultDiv = document.getElementById('result');
       if (allCorrect && hintUsed) {
@@ -611,7 +1088,9 @@
       updateStats();
 
       // Record attempt and show clue stats (hint usage counts as incorrect)
-      await recordAttemptAndShowStats(countAsCorrect);
+      const clueKey = currentClue.key;
+      const stats = await recordAttempt(clueKey, countAsCorrect);
+      displayClueStats(stats);
     }
 
     async function skipClue() {
@@ -621,44 +1100,14 @@
       }
 
       // Record as incorrect
-      const clueId = `${currentClue.direction}-${currentClue.number}`;
-      const puzzleDate = currentClue.puzzleDate;
-
-      try {
-        await fetch(`${API_BASE}/api/quiz-attempt`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ clueId, puzzleDate, correct: false })
-        });
-      } catch (err) {
-        console.error('Error recording skip:', err);
-      }
+      const clueKey = currentClue.key;
+      await recordAttempt(clueKey, false);
 
       // Update session stats
-      stats.total++;
+      sessionStats.total++;
 
       updateStats();
       loadClue();
-    }
-
-    async function recordAttemptAndShowStats(correct) {
-      const clueId = `${currentClue.direction}-${currentClue.number}`;
-      const puzzleDate = currentClue.puzzleDate;
-
-      try {
-        const res = await fetch(`${API_BASE}/api/quiz-attempt`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ clueId, puzzleDate, correct })
-        });
-
-        if (!res.ok) throw new Error('Failed to record attempt');
-
-        const data = await res.json();
-        displayClueStats(data.stats);
-      } catch (err) {
-        console.error('Error recording attempt:', err);
-      }
     }
 
     function displayClueStats(stats) {
@@ -708,9 +1157,9 @@
 
     function updateStats() {
       const statsDiv = document.getElementById('stats');
-      if (stats.total > 0) {
-        const pct = Math.round((stats.correct / stats.total) * 100);
-        statsDiv.textContent = `Score: ${stats.correct}/${stats.total} (${pct}%)`;
+      if (sessionStats.total > 0) {
+        const pct = Math.round((sessionStats.correct / sessionStats.total) * 100);
+        statsDiv.textContent = `Score: ${sessionStats.correct}/${sessionStats.total} (${pct}%)`;
       }
     }
 
@@ -720,8 +1169,30 @@
       return div.innerHTML;
     }
 
-    // Load initial clue
-    loadClue();
+    // === INITIALIZATION ===
+    async function init() {
+      try {
+        await openDatabase();
+
+        // Update status
+        updateStatusIndicator(isOnline ? 'online' : 'offline');
+
+        // If online, sync from server first
+        if (isOnline) {
+          await syncFromServer();
+          await syncPendingAttempts();
+        }
+
+        // Load first clue
+        await loadClue();
+      } catch (err) {
+        console.error('Initialization error:', err);
+        document.getElementById('quiz').innerHTML =
+          `<div class="error">Failed to initialize: ${err.message}</div>`;
+      }
+    }
+
+    init();
   </script>
 </body>
 </html>
