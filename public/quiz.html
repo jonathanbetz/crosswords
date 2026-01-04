@@ -651,6 +651,20 @@
     // === OFFLINE SYNC LOGIC ===
     const SYNC_INTERVAL_MS = 5 * 60 * 1000; // Only sync if data is older than 5 minutes
 
+    async function mergeNewAttempts(newAttempts) {
+      // Merge new attempts from server into local IndexedDB
+      for (const { clueKey, attempts } of newAttempts) {
+        const existing = await getAttempts(clueKey);
+        const existingTimestamps = new Set(existing.map(a => a.timestamp));
+
+        // Add only attempts we don't already have
+        const toAdd = attempts.filter(a => !existingTimestamps.has(a.timestamp));
+        for (const attempt of toAdd) {
+          await saveLocalAttempt(clueKey, attempt);
+        }
+      }
+    }
+
     async function syncFromServer(force = false) {
       if (!isOnline) return false;
 
@@ -668,17 +682,38 @@
         }
 
         updateStatusIndicator('syncing');
-        const url = includeCompleted
+
+        // Use incremental sync if we have previous data with same mode
+        const useIncremental = lastSync > 0 && sameMode && !force;
+        let url = includeCompleted
           ? `${API_BASE}/api/quiz-bulk?includeCompleted=true`
           : `${API_BASE}/api/quiz-bulk`;
+
+        if (useIncremental) {
+          url += `${url.includes('?') ? '&' : '?'}since=${lastSync}`;
+        }
 
         const res = await fetch(url);
         if (!res.ok) throw new Error('Failed to fetch');
 
         const data = await res.json();
-        await saveClues(data.clues);
-        await setSyncMeta({ timestamp: data.fetchedAt, includeCompleted });
 
+        if (data.isIncremental) {
+          // Incremental: merge new clues and attempts
+          if (data.clues.length > 0) {
+            await saveClues(data.clues);
+          }
+          if (data.newAttempts.length > 0) {
+            await mergeNewAttempts(data.newAttempts);
+          }
+          console.log(`Incremental sync: ${data.clues.length} clues, ${data.newAttempts.length} attempt updates`);
+        } else {
+          // Full sync: replace everything
+          await saveClues(data.clues);
+          console.log(`Full sync: ${data.clues.length} clues`);
+        }
+
+        await setSyncMeta({ timestamp: data.fetchedAt, includeCompleted });
         updateStatusIndicator('online');
         return true;
       } catch (err) {
