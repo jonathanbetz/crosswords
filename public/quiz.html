@@ -649,10 +649,24 @@
     }
 
     // === OFFLINE SYNC LOGIC ===
-    async function syncFromServer() {
+    const SYNC_INTERVAL_MS = 5 * 60 * 1000; // Only sync if data is older than 5 minutes
+
+    async function syncFromServer(force = false) {
       if (!isOnline) return false;
 
       try {
+        // Check if we need to sync
+        const meta = await getSyncMeta();
+        const now = Date.now();
+        const lastSync = meta?.timestamp || 0;
+        const sameMode = meta?.includeCompleted === includeCompleted;
+
+        // Skip sync if recent and same mode (unless forced)
+        if (!force && sameMode && (now - lastSync) < SYNC_INTERVAL_MS) {
+          console.log('Skipping sync - data is fresh');
+          return true;
+        }
+
         updateStatusIndicator('syncing');
         const url = includeCompleted
           ? `${API_BASE}/api/quiz-bulk?includeCompleted=true`
@@ -796,9 +810,9 @@
     function toggleIncludeCompleted() {
       includeCompleted = !includeCompleted;
       document.getElementById('includeCompletedToggle').classList.toggle('active', includeCompleted);
-      // Refresh from server if online
+      // Refresh from server if online (force since mode changed)
       if (isOnline) {
-        syncFromServer().then(() => loadClue());
+        syncFromServer(true).then(() => loadClue());
       } else {
         loadClue();
       }
