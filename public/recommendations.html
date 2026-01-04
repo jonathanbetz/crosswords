@@ -162,17 +162,16 @@
     .clue-info {
       flex: 1;
     }
-    .clue-meta {
-      color: #999;
-      font-size: 11px;
-    }
     .clue-text {
       color: #333;
     }
-    .clue-length {
-      color: #666;
-      min-width: 60px;
+    .clue-answer {
+      font-family: monospace;
+      font-weight: 600;
+      color: #333;
+      min-width: 80px;
       text-align: right;
+      letter-spacing: 1px;
     }
     .loading {
       text-align: center;
@@ -263,10 +262,9 @@
               <div class="clue-item${!clue.hasAnswer ? ' missing-answer' : ''}">
                 <span class="clue-score ${scoreClass}">${scoreDisplay}</span>
                 <div class="clue-info">
-                  <span class="clue-meta">${clue.direction.toUpperCase()} ${clue.number}</span>
                   <span class="clue-text">${escapeHtml(clue.text)}</span>
                 </div>
-                <span class="clue-length">${clue.length} letters</span>
+                <span class="clue-answer">${clue.answer ? escapeHtml(clue.answer) : '???'}</span>
               </div>
             `;
           }).join('');

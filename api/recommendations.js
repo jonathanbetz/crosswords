@@ -86,6 +86,7 @@ export default async function handler(req, res) {
           number: clue.number,
           direction: clue.direction,
           text: clue.text,
+          answer: hasCompleteAnswer ? clue.answer : null,
           length: answerLength,
           wilsonScore: Math.round(wilsonScore * 100) / 100,
           attempts: total,
