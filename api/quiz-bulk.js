@@ -1,5 +1,7 @@
 import { kv } from '@vercel/kv';
 
+const RECENT_ATTEMPTS_KEY = 'quiz:recent-attempts';
+
 export default async function handler(req, res) {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -16,21 +18,100 @@ export default async function handler(req, res) {
     const sinceTimestamp = since ? parseInt(since, 10) : 0;
     const isIncremental = sinceTimestamp > 0;
 
-    // Get all puzzle dates
-    const dates = await kv.smembers('puzzle:dates');
-
-    if (!dates || dates.length === 0) {
-      return res.status(200).json({
-        clues: [],
-        newAttempts: [],
-        fetchedAt: Date.now(),
-        isIncremental
-      });
+    // For incremental sync, use the efficient recent-attempts log
+    if (isIncremental) {
+      return handleIncrementalSync(req, res, sinceTimestamp, showCompletedPuzzles);
     }
 
-    const clues = [];
-    const newAttempts = [];
+    // Full sync: fetch all puzzles and clues
+    return handleFullSync(req, res, showCompletedPuzzles);
+  } catch (error) {
+    console.error('Error getting bulk quiz data:', error);
+    return res.status(500).json({ error: 'Failed to get quiz data' });
+  }
+}
 
+async function handleFullSync(req, res, showCompletedPuzzles) {
+  // Get all puzzle dates
+  const dates = await kv.smembers('puzzle:dates');
+
+  if (!dates || dates.length === 0) {
+    return res.status(200).json({
+      clues: [],
+      newAttempts: [],
+      fetchedAt: Date.now(),
+      isIncremental: false
+    });
+  }
+
+  const clues = [];
+
+  for (const date of dates) {
+    const key = `puzzle:${date}`;
+    const record = await kv.get(key);
+
+    if (!record || !record.clues) continue;
+
+    // Skip puzzles marked as complete unless includeCompleted is true
+    if (record.markedComplete && !showCompletedPuzzles) continue;
+
+    for (const clue of record.clues) {
+      // Skip ignored clues
+      if (clue.ignored) continue;
+
+      // Only include clues with complete answers
+      if (!clue.answer || !clue.pattern || clue.answer.length !== clue.pattern.length) continue;
+
+      const clueId = `${clue.direction}-${clue.number}`;
+      const statsKey = `quiz:${date}:${clueId}`;
+      const attempts = await kv.get(statsKey) || [];
+
+      clues.push({
+        text: clue.text,
+        pattern: clue.pattern,
+        answer: clue.answer,
+        number: clue.number,
+        direction: clue.direction,
+        puzzleDate: date,
+        attempts: attempts
+      });
+    }
+  }
+
+  return res.status(200).json({
+    clues,
+    newAttempts: [],
+    fetchedAt: Date.now(),
+    isIncremental: false
+  });
+}
+
+async function handleIncrementalSync(req, res, sinceTimestamp, showCompletedPuzzles) {
+  // Get recent attempts from the log (single KV read!)
+  const recentAttempts = await kv.get(RECENT_ATTEMPTS_KEY) || [];
+
+  // Filter to only attempts since the given timestamp
+  const newAttempts = recentAttempts
+    .filter(a => a.timestamp > sinceTimestamp)
+    .reduce((acc, attempt) => {
+      // Group by clueKey
+      const existing = acc.find(a => a.clueKey === attempt.clueKey);
+      if (existing) {
+        existing.attempts.push({ timestamp: attempt.timestamp, correct: attempt.correct });
+      } else {
+        acc.push({
+          clueKey: attempt.clueKey,
+          attempts: [{ timestamp: attempt.timestamp, correct: attempt.correct }]
+        });
+      }
+      return acc;
+    }, []);
+
+  // Check for new/updated puzzles
+  const dates = await kv.smembers('puzzle:dates');
+  const clues = [];
+
+  if (dates && dates.length > 0) {
     for (const date of dates) {
       const key = `puzzle:${date}`;
       const record = await kv.get(key);
@@ -40,69 +121,36 @@ export default async function handler(req, res) {
       // Skip puzzles marked as complete unless includeCompleted is true
       if (record.markedComplete && !showCompletedPuzzles) continue;
 
-      // For incremental sync, check if puzzle was updated since last sync
+      // Check if puzzle was updated since last sync
       const puzzleUpdatedAt = record.updatedAt ? new Date(record.updatedAt).getTime() : 0;
-      const puzzleIsNew = !isIncremental || puzzleUpdatedAt > sinceTimestamp;
+      if (puzzleUpdatedAt <= sinceTimestamp) continue;
 
+      // Puzzle was updated - include its clues
       for (const clue of record.clues) {
-        // Skip ignored clues
         if (clue.ignored) continue;
-
-        // Only include clues with complete answers
         if (!clue.answer || !clue.pattern || clue.answer.length !== clue.pattern.length) continue;
 
         const clueId = `${clue.direction}-${clue.number}`;
-        const clueKey = `${date}:${clueId}`;
         const statsKey = `quiz:${date}:${clueId}`;
+        const attempts = await kv.get(statsKey) || [];
 
-        if (isIncremental) {
-          // Incremental: only fetch attempts and check for new ones
-          const attempts = await kv.get(statsKey) || [];
-          const recentAttempts = attempts.filter(a => a.timestamp > sinceTimestamp);
-
-          if (recentAttempts.length > 0) {
-            newAttempts.push({
-              clueKey,
-              attempts: recentAttempts
-            });
-          }
-
-          // Only include clue data if puzzle was updated
-          if (puzzleIsNew) {
-            clues.push({
-              text: clue.text,
-              pattern: clue.pattern,
-              answer: clue.answer,
-              number: clue.number,
-              direction: clue.direction,
-              puzzleDate: date,
-              attempts: attempts
-            });
-          }
-        } else {
-          // Full sync: include everything
-          const attempts = await kv.get(statsKey) || [];
-          clues.push({
-            text: clue.text,
-            pattern: clue.pattern,
-            answer: clue.answer,
-            number: clue.number,
-            direction: clue.direction,
-            puzzleDate: date,
-            attempts: attempts
-          });
-        }
+        clues.push({
+          text: clue.text,
+          pattern: clue.pattern,
+          answer: clue.answer,
+          number: clue.number,
+          direction: clue.direction,
+          puzzleDate: date,
+          attempts: attempts
+        });
       }
     }
-
-    return res.status(200).json({
-      clues,
-      newAttempts: isIncremental ? newAttempts : [],
-      fetchedAt: Date.now(),
-      isIncremental
-    });
-  } catch (error) {
-    console.error('Error getting bulk quiz data:', error);
-    return res.status(500).json({ error: 'Failed to get quiz data' });
   }
+
+  return res.status(200).json({
+    clues,
+    newAttempts,
+    fetchedAt: Date.now(),
+    isIncremental: true
+  });
 }

@@ -15,6 +15,9 @@ export default async function handler(req, res) {
   return res.status(405).json({ error: 'Method not allowed' });
 }
 
+const RECENT_ATTEMPTS_KEY = 'quiz:recent-attempts';
+const RECENT_ATTEMPTS_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
 async function recordAttempt(req, res) {
   try {
     const { clueId, puzzleDate, correct } = req.body;
@@ -24,6 +27,7 @@ async function recordAttempt(req, res) {
     }
 
     const key = `quiz:${puzzleDate}:${clueId}`;
+    const clueKey = `${puzzleDate}:${clueId}`;
     const now = Date.now();
 
     // Get existing attempts or create new array
@@ -37,6 +41,22 @@ async function recordAttempt(req, res) {
 
     // Store attempts
     await kv.set(key, attempts);
+
+    // Also append to recent-attempts log for efficient incremental sync
+    let recentAttempts = await kv.get(RECENT_ATTEMPTS_KEY) || [];
+
+    // Clean up old entries (older than 7 days)
+    const cutoff = now - RECENT_ATTEMPTS_MAX_AGE_MS;
+    recentAttempts = recentAttempts.filter(a => a.timestamp > cutoff);
+
+    // Add new attempt to log
+    recentAttempts.push({
+      clueKey,
+      timestamp: now,
+      correct
+    });
+
+    await kv.set(RECENT_ATTEMPTS_KEY, recentAttempts);
 
     // Calculate and return stats
     const stats = calculateStats(attempts);
