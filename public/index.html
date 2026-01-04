@@ -41,13 +41,17 @@
       color: #666;
       margin-bottom: 30px;
     }
-    .date-list {
+    .puzzle-nav {
       display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
+      align-items: center;
+      gap: 12px;
       margin-bottom: 30px;
+      background: white;
+      padding: 12px 16px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
-    .date-btn {
+    .nav-btn {
       padding: 8px 16px;
       border: 1px solid #ddd;
       background: white;
@@ -56,16 +60,21 @@
       font-size: 14px;
       transition: all 0.2s;
     }
-    .date-btn:hover {
+    .nav-btn:hover:not(:disabled) {
       border-color: #007bff;
       color: #007bff;
     }
-    .date-btn.active {
-      background: #007bff;
-      color: white;
-      border-color: #007bff;
+    .nav-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
     }
-    .date-btn .incomplete-count {
+    .current-puzzle {
+      flex: 1;
+      text-align: center;
+      font-weight: 600;
+      font-size: 16px;
+    }
+    .current-puzzle .incomplete-count {
       display: inline-block;
       background: #dc3545;
       color: white;
@@ -73,22 +82,16 @@
       font-weight: bold;
       padding: 1px 6px;
       border-radius: 10px;
-      margin-left: 6px;
+      margin-left: 8px;
     }
-    .date-btn.active .incomplete-count {
-      background: rgba(255,255,255,0.3);
-    }
-    .date-btn .incomplete-count.complete {
+    .current-puzzle .incomplete-count.complete {
       background: #28a745;
     }
-    .date-btn.active .incomplete-count.complete {
-      background: rgba(255,255,255,0.3);
-    }
-    .date-btn.marked-complete {
-      opacity: 0.5;
-    }
-    .date-btn.marked-complete:not(.active) {
-      background: #e8f5e9;
+    .puzzle-position {
+      font-size: 12px;
+      color: #666;
+      font-weight: normal;
+      margin-left: 8px;
     }
     .toggle-container {
       display: flex;
@@ -332,8 +335,10 @@
     <div class="toggle-switch" id="showCompletedToggle" onclick="toggleShowCompleted()"></div>
   </div>
 
-  <div id="dates" class="date-list">
-    <span class="loading">Loading dates...</span>
+  <div id="puzzle-nav" class="puzzle-nav" style="display: none;">
+    <button class="nav-btn" id="prevBtn" onclick="navigatePuzzle(-1)">&larr; Prev</button>
+    <div class="current-puzzle" id="currentPuzzle"></div>
+    <button class="nav-btn" id="nextBtn" onclick="navigatePuzzle(1)">Next &rarr;</button>
   </div>
 
   <div id="clues" class="clues-container">
@@ -344,11 +349,59 @@
     const API_BASE = '';  // Same origin
     let showCompleted = false;
     let puzzlesData = [];
+    let currentPuzzleIndex = 0;
 
     function toggleShowCompleted() {
       showCompleted = !showCompleted;
       document.getElementById('showCompletedToggle').classList.toggle('active', showCompleted);
-      renderDates();
+      // Find current puzzle in new filtered list
+      const currentDate = getVisiblePuzzles()[currentPuzzleIndex]?.date;
+      const newVisible = getVisiblePuzzles();
+      const newIndex = newVisible.findIndex(p => p.date === currentDate);
+      currentPuzzleIndex = newIndex >= 0 ? newIndex : 0;
+      updateNav();
+      if (newVisible.length > 0) {
+        loadClues(newVisible[currentPuzzleIndex].date);
+      }
+    }
+
+    function getVisiblePuzzles() {
+      return showCompleted
+        ? puzzlesData
+        : puzzlesData.filter(p => !p.markedComplete);
+    }
+
+    function navigatePuzzle(delta) {
+      const visible = getVisiblePuzzles();
+      const newIndex = currentPuzzleIndex + delta;
+      if (newIndex >= 0 && newIndex < visible.length) {
+        currentPuzzleIndex = newIndex;
+        updateNav();
+        loadClues(visible[currentPuzzleIndex].date);
+      }
+    }
+
+    function updateNav() {
+      const visible = getVisiblePuzzles();
+      const navEl = document.getElementById('puzzle-nav');
+
+      if (visible.length === 0) {
+        navEl.style.display = 'none';
+        return;
+      }
+
+      navEl.style.display = 'flex';
+      const puzzle = visible[currentPuzzleIndex];
+      const isComplete = puzzle.incomplete === 0;
+
+      document.getElementById('currentPuzzle').innerHTML = `
+        ${formatDate(puzzle.date)}
+        <span class="incomplete-count${isComplete ? ' complete' : ''}">${puzzle.incomplete}</span>
+        <span class="puzzle-position">${currentPuzzleIndex + 1} of ${visible.length}</span>
+      `;
+
+      document.getElementById('prevBtn').disabled = currentPuzzleIndex === 0;
+      document.getElementById('nextBtn').disabled = currentPuzzleIndex === visible.length - 1;
     }
 
     async function loadDates() {
@@ -356,10 +409,9 @@
         const res = await fetch(`${API_BASE}/api/clues`);
         const data = await res.json();
 
-        const container = document.getElementById('dates');
-
         if (!data.dates || data.dates.length === 0) {
-          container.innerHTML = '<span class="empty-state">No saved puzzles yet</span>';
+          document.getElementById('puzzle-nav').style.display = 'none';
+          document.getElementById('clues').innerHTML = '<div class="empty-state">No saved puzzles yet</div>';
           return;
         }
 
@@ -379,54 +431,29 @@
           }
         }
 
-        renderDates();
-
-        // Load requested date from URL, or fall back to most recent non-completed puzzle
-        if (requestedDate && puzzlesData.some(p => p.date === requestedDate)) {
-          loadClues(requestedDate);
+        // Find the puzzle index to show
+        const visible = getVisiblePuzzles();
+        if (requestedDate) {
+          const idx = visible.findIndex(p => p.date === requestedDate);
+          currentPuzzleIndex = idx >= 0 ? idx : 0;
         } else {
-          const firstVisible = puzzlesData.find(p => !p.markedComplete) || puzzlesData[0];
-          if (firstVisible) {
-            loadClues(firstVisible.date);
-          }
+          currentPuzzleIndex = 0;
+        }
+
+        updateNav();
+
+        // Load the current puzzle's clues
+        if (visible.length > 0) {
+          loadClues(visible[currentPuzzleIndex].date);
         }
       } catch (err) {
-        document.getElementById('dates').innerHTML =
+        document.getElementById('puzzle-nav').style.display = 'none';
+        document.getElementById('clues').innerHTML =
           `<div class="error">Failed to load dates: ${err.message}</div>`;
       }
     }
 
-    function renderDates() {
-      const container = document.getElementById('dates');
-
-      // Filter puzzles based on toggle
-      const visiblePuzzles = showCompleted
-        ? puzzlesData
-        : puzzlesData.filter(p => !p.markedComplete);
-
-      if (visiblePuzzles.length === 0) {
-        container.innerHTML = '<span class="empty-state">No puzzles to show</span>';
-        return;
-      }
-
-      container.innerHTML = visiblePuzzles.map(p => {
-        const isComplete = p.incomplete === 0;
-        const markedComplete = p.markedComplete || false;
-        return `<button class="date-btn${markedComplete ? ' marked-complete' : ''}" data-date="${p.date}">${formatDate(p.date)}<span class="incomplete-count${isComplete ? ' complete' : ''}">${p.incomplete}</span></button>`;
-      }).join('');
-
-      // Add click handlers
-      container.querySelectorAll('.date-btn').forEach(btn => {
-        btn.addEventListener('click', () => loadClues(btn.dataset.date));
-      });
-    }
-
     async function loadClues(date) {
-      // Update active button
-      document.querySelectorAll('.date-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.date === date);
-      });
-
       const container = document.getElementById('clues');
       container.innerHTML = '<div class="loading">Loading clues...</div>';
 
@@ -701,8 +728,8 @@
           puzzleInfo.markedComplete = newStatus;
         }
 
-        // Re-render dates and clues
-        renderDates();
+        // Re-render nav and clues
+        updateNav();
         loadClues(date);
       } catch (err) {
         console.error('Error toggling puzzle complete:', err);
