@@ -13,6 +13,7 @@
       max-width: 600px;
       margin: 0 auto;
       padding: 20px;
+      padding-bottom: 50vh;
       background: #f5f5f5;
       color: #333;
     }
@@ -466,7 +467,13 @@
           }
         });
 
-        input.addEventListener('focus', () => input.select());
+        input.addEventListener('focus', () => {
+          input.select();
+          // On mobile, scroll input into view when keyboard appears
+          setTimeout(() => {
+            input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 300);
+        });
       });
     }
 
