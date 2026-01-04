@@ -87,6 +87,7 @@ export default async function handler(req, res) {
           direction: clue.direction,
           text: clue.text,
           answer: hasCompleteAnswer ? clue.answer : null,
+          pattern: clue.pattern ? clue.pattern.replace(/_/g, '?') : null,
           length: answerLength,
           wilsonScore: Math.round(wilsonScore * 100) / 100,
           attempts: total,

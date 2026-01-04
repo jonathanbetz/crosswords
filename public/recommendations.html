@@ -264,7 +264,7 @@
                 <div class="clue-info">
                   <span class="clue-text">${escapeHtml(clue.text)}</span>
                 </div>
-                <span class="clue-answer">${clue.answer ? escapeHtml(clue.answer) : '???'}</span>
+                <span class="clue-answer">${clue.answer ? escapeHtml(clue.answer) : escapeHtml(clue.pattern || '???')}</span>
               </div>
             `;
           }).join('');
