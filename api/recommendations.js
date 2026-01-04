@@ -48,26 +48,38 @@ export default async function handler(req, res) {
       let totalSquares = 0;
       let totalExpected = 0;
       let quizzedClueCount = 0;
+      let answeredClueCount = 0;
 
       for (const clue of record.clues) {
         // Skip ignored clues
         if (clue.ignored) continue;
 
-        // Only include clues with complete answers
-        if (!clue.answer || !clue.pattern || clue.answer.length !== clue.pattern.length) continue;
+        // Must have a pattern to know the length
+        if (!clue.pattern) continue;
 
-        const clueId = `${clue.direction}-${clue.number}`;
-        const statsKey = `quiz:${date}:${clueId}`;
-        const attempts = await kv.get(statsKey) || [];
-
-        const total = attempts.length;
-        const correct = attempts.filter(a => a.correct).length;
-        const wilsonScore = calculateWilsonLower(correct, total);
-        const answerLength = clue.answer.length;
-
-        if (total > 0) quizzedClueCount++;
-
+        const answerLength = clue.pattern.length;
         totalSquares += answerLength;
+
+        // If no complete answer, treat as 0% solvable (can't quiz on it)
+        const hasCompleteAnswer = clue.answer && clue.answer.length === clue.pattern.length;
+
+        let wilsonScore = 0;
+        let total = 0;
+        let correct = 0;
+
+        if (hasCompleteAnswer) {
+          answeredClueCount++;
+          const clueId = `${clue.direction}-${clue.number}`;
+          const statsKey = `quiz:${date}:${clueId}`;
+          const attempts = await kv.get(statsKey) || [];
+
+          total = attempts.length;
+          correct = attempts.filter(a => a.correct).length;
+          wilsonScore = calculateWilsonLower(correct, total);
+
+          if (total > 0) quizzedClueCount++;
+        }
+
         totalExpected += wilsonScore * answerLength;
 
         clues.push({
@@ -76,7 +88,8 @@ export default async function handler(req, res) {
           text: clue.text,
           length: answerLength,
           wilsonScore: Math.round(wilsonScore * 100) / 100,
-          attempts: total
+          attempts: total,
+          hasAnswer: hasCompleteAnswer
         });
       }
 
@@ -91,6 +104,7 @@ export default async function handler(req, res) {
         totalSquares,
         expectedSquares: Math.round(totalExpected * 10) / 10,
         clueCount: clues.length,
+        answeredClueCount,
         quizzedClueCount,
         clues
       });

@@ -152,6 +152,13 @@
       background: #e9ecef;
       color: #6c757d;
     }
+    .clue-score.missing {
+      background: #fce4ec;
+      color: #c2185b;
+    }
+    .clue-item.missing-answer {
+      opacity: 0.7;
+    }
     .clue-info {
       flex: 1;
     }
@@ -234,13 +241,26 @@
           });
 
           const clueItems = sortedClues.map(clue => {
-            const scoreClass = clue.wilsonScore >= 0.7 ? 'high' :
-                              clue.wilsonScore >= 0.4 ? 'medium' :
-                              clue.attempts === 0 ? 'none' : 'low';
-            const scoreDisplay = clue.attempts === 0 ? '-' : Math.round(clue.wilsonScore * 100) + '%';
+            let scoreClass, scoreDisplay;
+            if (!clue.hasAnswer) {
+              scoreClass = 'missing';
+              scoreDisplay = 'N/A';
+            } else if (clue.attempts === 0) {
+              scoreClass = 'none';
+              scoreDisplay = '-';
+            } else if (clue.wilsonScore >= 0.7) {
+              scoreClass = 'high';
+              scoreDisplay = Math.round(clue.wilsonScore * 100) + '%';
+            } else if (clue.wilsonScore >= 0.4) {
+              scoreClass = 'medium';
+              scoreDisplay = Math.round(clue.wilsonScore * 100) + '%';
+            } else {
+              scoreClass = 'low';
+              scoreDisplay = Math.round(clue.wilsonScore * 100) + '%';
+            }
 
             return `
-              <div class="clue-item">
+              <div class="clue-item${!clue.hasAnswer ? ' missing-answer' : ''}">
                 <span class="clue-score ${scoreClass}">${scoreDisplay}</span>
                 <div class="clue-info">
                   <span class="clue-meta">${clue.direction.toUpperCase()} ${clue.number}</span>
@@ -261,7 +281,8 @@
               </div>
               <div class="puzzle-stats">
                 <span>${puzzle.expectedSquares} / ${puzzle.totalSquares} expected squares</span>
-                <span>${puzzle.quizzedClueCount} / ${puzzle.clueCount} clues quizzed</span>
+                <span>${puzzle.answeredClueCount} / ${puzzle.clueCount} clues answered</span>
+                <span>${puzzle.quizzedClueCount} / ${puzzle.answeredClueCount} clues quizzed</span>
               </div>
               <div class="puzzle-actions">
                 <a href="/?date=${puzzle.puzzleDate}" class="puzzle-link">Review Clues</a>
