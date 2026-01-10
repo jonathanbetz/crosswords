@@ -81,7 +81,8 @@ async function handleFullSync(req, res, showCompletedPuzzles) {
         direction: clue.direction,
         puzzleDate: date,
         attempts: attempts,
-        hintsAvailable: hintsAvailable
+        hintsAvailable: hintsAvailable,
+        puzzleComplete: record.markedComplete || false
       });
     }
   }
@@ -149,7 +150,8 @@ async function handleIncrementalSync(req, res, sinceTimestamp, showCompletedPuzz
           number: clue.number,
           direction: clue.direction,
           puzzleDate: date,
-          attempts: attempts
+          attempts: attempts,
+          puzzleComplete: record.markedComplete || false
         });
       }
     }

@@ -480,7 +480,8 @@
             text: clue.text,
             pattern: clue.pattern,
             answer: clue.answer,
-            hintsAvailable: clue.hintsAvailable
+            hintsAvailable: clue.hintsAvailable,
+            puzzleComplete: clue.puzzleComplete || false
           });
 
           // Also store attempts
@@ -641,10 +642,17 @@
       const allClues = await getAllClues();
       if (allClues.length === 0) return null;
 
+      // Filter out clues from completed puzzles unless includeCompleted is true
+      const eligibleClues = includeCompleted
+        ? allClues
+        : allClues.filter(clue => !clue.puzzleComplete);
+
+      if (eligibleClues.length === 0) return null;
+
       const now = Date.now();
       const cluesWithScores = [];
 
-      for (const clue of allClues) {
+      for (const clue of eligibleClues) {
         const attempts = await getAttempts(clue.key);
         const total = attempts.length;
         const correct = attempts.filter(a => a.correct).length;
