@@ -1400,9 +1400,9 @@
         // Update status
         updateStatusIndicator(isOnline ? 'online' : 'offline');
 
-        // If online, sync from server first
+        // If online, sync from server first (force full sync to get latest puzzle completion status)
         if (isOnline) {
-          await syncFromServer();
+          await syncFromServer(true);
           await syncPendingAttempts();
         }
 
