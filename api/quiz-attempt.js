@@ -20,7 +20,7 @@ const RECENT_ATTEMPTS_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 async function recordAttempt(req, res) {
   try {
-    const { clueId, puzzleDate, correct, answerLength, hintsUsed } = req.body;
+    const { clueId, puzzleDate, correct, answerLength, hintsUsed, allCorrect } = req.body;
 
     if (!clueId || !puzzleDate || typeof correct !== 'boolean') {
       return res.status(400).json({ error: 'Missing clueId, puzzleDate, or correct' });
@@ -50,9 +50,10 @@ async function recordAttempt(req, res) {
       hintsAvailable = answerLength * 2;
     }
 
-    // On correct answer: next attempt gets (hints used this time - 1)
+    // On correct answer (all letters right): next attempt gets (hints used - 1)
+    // allCorrect means all letters were correct, even if hints were used
     // On incorrect: no change to hints available
-    if (correct && typeof hintsUsed === 'number') {
+    if (allCorrect && typeof hintsUsed === 'number') {
       hintsAvailable = Math.max(0, hintsUsed - 1);
       await kv.set(hintsKey, hintsAvailable);
     }

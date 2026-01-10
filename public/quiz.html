@@ -812,7 +812,7 @@
       }
     }
 
-    async function recordAttempt(clueKey, correct, answerLength = 0, hintsUsed = 0) {
+    async function recordAttempt(clueKey, correct, answerLength = 0, hintsUsed = 0, allCorrect = false) {
       const timestamp = Date.now();
 
       // Always save locally
@@ -824,7 +824,7 @@
           const res = await fetch(`${API_BASE}/api/quiz-attempt`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ clueId, puzzleDate, correct, answerLength, hintsUsed })
+            body: JSON.stringify({ clueId, puzzleDate, correct, answerLength, hintsUsed, allCorrect })
           });
 
           if (res.ok) {
@@ -1315,7 +1315,8 @@
       // Record attempt and show clue stats (hint usage counts as incorrect)
       const clueKey = currentClue.key;
       const answerLength = currentClue.answer?.length || 0;
-      const stats = await recordAttempt(clueKey, countAsCorrect, answerLength, hintsUsedThisClue);
+      // Pass both: countAsCorrect (for stats) and allCorrect (for hint updates)
+      const stats = await recordAttempt(clueKey, countAsCorrect, answerLength, hintsUsedThisClue, allCorrect);
       displayClueStats(stats);
     }
 
