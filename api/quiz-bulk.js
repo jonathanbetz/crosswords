@@ -64,7 +64,14 @@ async function handleFullSync(req, res, showCompletedPuzzles) {
 
       const clueId = `${clue.direction}-${clue.number}`;
       const statsKey = `quiz:${date}:${clueId}`;
+      const hintsKey = `hints:${date}:${clueId}`;
       const attempts = await kv.get(statsKey) || [];
+      let hintsAvailable = await kv.get(hintsKey);
+
+      // Default to 2x answer length if not set
+      if (hintsAvailable === null) {
+        hintsAvailable = clue.answer.length * 2;
+      }
 
       clues.push({
         text: clue.text,
@@ -73,7 +80,8 @@ async function handleFullSync(req, res, showCompletedPuzzles) {
         number: clue.number,
         direction: clue.direction,
         puzzleDate: date,
-        attempts: attempts
+        attempts: attempts,
+        hintsAvailable: hintsAvailable
       });
     }
   }

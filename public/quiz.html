@@ -289,6 +289,41 @@
       border-radius: 8px;
       text-align: center;
     }
+    .streak-display {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    .streak-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .streak-label {
+      color: #666;
+    }
+    .streak-value {
+      font-weight: bold;
+      color: #28a745;
+    }
+    .streak-value.zero {
+      color: #999;
+    }
+    .hints-display {
+      font-size: 12px;
+      color: #666;
+      margin-top: 8px;
+      text-align: center;
+    }
+    .hints-count {
+      font-weight: bold;
+      color: #ffc107;
+    }
+    .hints-count.zero {
+      color: #dc3545;
+    }
     .toggle-container {
       display: flex;
       align-items: center;
@@ -344,6 +379,7 @@
       <a href="/research.html" class="nav-link">Research</a>
       <a href="/quiz.html" class="nav-link">Quiz</a>
       <a href="/performance.html" class="nav-link">Performance</a>
+      <a href="/learning.html" class="nav-link">Learning</a>
     </div>
   </header>
 
@@ -369,7 +405,10 @@
     let submitted = false;
     let hintUsed = false;
     let hintCheckedLetters = []; // Track which letters have been checked via hint
+    let hintsUsedThisClue = 0; // Track hints used on current clue
     let sessionStats = { correct: 0, total: 0 };
+    let currentStreak = 0;
+    let longestStreak = parseInt(localStorage.getItem('longestStreak') || '0');
     let includeCompleted = false;
     let isOnline = navigator.onLine;
     let db = null;
@@ -433,7 +472,8 @@
             number: clue.number,
             text: clue.text,
             pattern: clue.pattern,
-            answer: clue.answer
+            answer: clue.answer,
+            hintsAvailable: clue.hintsAvailable
           });
 
           // Also store attempts
@@ -752,7 +792,7 @@
       }
     }
 
-    async function recordAttempt(clueKey, correct) {
+    async function recordAttempt(clueKey, correct, answerLength = 0) {
       const timestamp = Date.now();
 
       // Always save locally
@@ -764,11 +804,15 @@
           const res = await fetch(`${API_BASE}/api/quiz-attempt`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ clueId, puzzleDate, correct })
+            body: JSON.stringify({ clueId, puzzleDate, correct, answerLength })
           });
 
           if (res.ok) {
             const data = await res.json();
+            // Update local hintsAvailable from server response
+            if (data.hintsAvailable !== undefined) {
+              await updateClueHints(clueKey, data.hintsAvailable);
+            }
             return data.stats;
           }
         } catch (err) {
@@ -782,6 +826,25 @@
 
       // Return local stats
       return calculateLocalStats(clueKey);
+    }
+
+    async function updateClueHints(clueKey, hintsAvailable) {
+      return new Promise((resolve, reject) => {
+        const tx = dbTransaction('clues', 'readwrite');
+        const store = tx.objectStore('clues');
+        const request = store.get(clueKey);
+
+        request.onsuccess = () => {
+          const record = request.result;
+          if (record) {
+            record.hintsAvailable = hintsAvailable;
+            store.put(record);
+          }
+        };
+
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
     }
 
     async function calculateLocalStats(clueKey) {
@@ -854,6 +917,7 @@
       submitted = false;
       hintUsed = false;
       hintCheckedLetters = [];
+      hintsUsedThisClue = 0;
 
       try {
         const clue = await selectNextClue();
@@ -872,6 +936,11 @@
     function renderClue() {
       const container = document.getElementById('quiz');
       const pattern = currentClue.pattern || '';
+
+      // Calculate hints available (default to 2x answer length if not set)
+      const hintsAvailable = currentClue.hintsAvailable !== undefined
+        ? currentClue.hintsAvailable
+        : (currentClue.answer?.length || pattern.length) * 2;
 
       // Build letter inputs - show letters from pattern, leave blanks for underscores
       let letterInputs = '';
@@ -897,7 +966,22 @@
         >`;
       }
 
+      const streakClass = currentStreak > 0 ? '' : 'zero';
+      const longestClass = longestStreak > 0 ? '' : 'zero';
+      const hintsClass = hintsAvailable > 0 ? '' : 'zero';
+      const hintBtnDisabled = hintsAvailable <= 0 ? 'disabled' : '';
+
       container.innerHTML = `
+        <div class="streak-display">
+          <div class="streak-item">
+            <span class="streak-label">Streak:</span>
+            <span class="streak-value ${streakClass}" id="currentStreak">${currentStreak}</span>
+          </div>
+          <div class="streak-item">
+            <span class="streak-label">Best:</span>
+            <span class="streak-value ${longestClass}" id="longestStreak">${longestStreak}</span>
+          </div>
+        </div>
         <div class="clue-text">${escapeHtml(currentClue.text)}</div>
         <div class="clue-meta">${currentClue.direction.toUpperCase()} ${currentClue.number} - ${pattern.length} letters</div>
         <div class="letter-inputs" id="letterInputs">
@@ -906,8 +990,11 @@
         <div id="result"></div>
         <div class="actions">
           <button class="submit-btn" id="submitBtn" onclick="checkAnswer()">Check Answer</button>
-          <button class="hint-btn" id="hintBtn" onclick="useHint()">Hint</button>
+          <button class="hint-btn" id="hintBtn" onclick="useHint()" ${hintBtnDisabled}>Hint</button>
           <button class="skip-btn" onclick="skipClue()">Skip</button>
+        </div>
+        <div class="hints-display">
+          Hints remaining: <span class="hints-count ${hintsClass}" id="hintsCount">${hintsAvailable}</span>
         </div>
       `;
 
@@ -1013,6 +1100,11 @@
     function useHintForSquare(targetIdx) {
       if (submitted) return;
 
+      // Check if hints available
+      const hintsCountEl = document.getElementById('hintsCount');
+      let hintsRemaining = parseInt(hintsCountEl?.textContent || '0');
+      if (hintsRemaining <= 0) return;
+
       const inputs = document.querySelectorAll('.letter-input');
       const answer = currentClue.answer.toUpperCase();
       const input = inputs[targetIdx];
@@ -1022,6 +1114,20 @@
 
       // Mark that hint was used
       hintUsed = true;
+      hintsUsedThisClue++;
+
+      // Decrement hints display
+      hintsRemaining--;
+      if (hintsCountEl) {
+        hintsCountEl.textContent = hintsRemaining;
+        hintsCountEl.classList.toggle('zero', hintsRemaining <= 0);
+      }
+
+      // Disable hint button if no hints left
+      const hintBtn = document.getElementById('hintBtn');
+      if (hintBtn && hintsRemaining <= 0) {
+        hintBtn.disabled = true;
+      }
 
       // If already marked incorrect (red), replace with correct letter
       if (isAlreadyIncorrect) {
@@ -1144,7 +1250,28 @@
 
       // Using a hint counts as incorrect
       const countAsCorrect = allCorrect && !hintUsed;
-      if (countAsCorrect) sessionStats.correct++;
+      if (countAsCorrect) {
+        sessionStats.correct++;
+        currentStreak++;
+        if (currentStreak > longestStreak) {
+          longestStreak = currentStreak;
+          localStorage.setItem('longestStreak', longestStreak.toString());
+        }
+      } else {
+        currentStreak = 0;
+      }
+
+      // Update streak display
+      const currentStreakEl = document.getElementById('currentStreak');
+      const longestStreakEl = document.getElementById('longestStreak');
+      if (currentStreakEl) {
+        currentStreakEl.textContent = currentStreak;
+        currentStreakEl.classList.toggle('zero', currentStreak === 0);
+      }
+      if (longestStreakEl) {
+        longestStreakEl.textContent = longestStreak;
+        longestStreakEl.classList.toggle('zero', longestStreak === 0);
+      }
 
       const resultDiv = document.getElementById('result');
       if (allCorrect && hintUsed) {
@@ -1163,7 +1290,8 @@
 
       // Record attempt and show clue stats (hint usage counts as incorrect)
       const clueKey = currentClue.key;
-      const stats = await recordAttempt(clueKey, countAsCorrect);
+      const answerLength = currentClue.answer?.length || 0;
+      const stats = await recordAttempt(clueKey, countAsCorrect, answerLength);
       displayClueStats(stats);
     }
 
@@ -1175,10 +1303,12 @@
 
       // Record as incorrect
       const clueKey = currentClue.key;
-      await recordAttempt(clueKey, false);
+      const answerLength = currentClue.answer?.length || 0;
+      await recordAttempt(clueKey, false, answerLength);
 
       // Update session stats
       sessionStats.total++;
+      currentStreak = 0;
 
       updateStats();
       loadClue();
@@ -1265,6 +1395,14 @@
           `<div class="error">Failed to initialize: ${err.message}</div>`;
       }
     }
+
+    // Global keyboard shortcuts (only when not in input)
+    document.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.key.toLowerCase() === 'q') window.location.href = '/quiz.html';
+      if (e.key.toLowerCase() === 'p') window.location.href = '/puzzles.html';
+      if (e.key.toLowerCase() === 'r') window.location.href = '/recommendations.html';
+    });
 
     init();
   </script>

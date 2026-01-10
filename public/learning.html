@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Learning Curve - Crossword Stats</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+      color: #333;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    h1 {
+      margin: 0;
+    }
+    .nav-links {
+      display: flex;
+      gap: 16px;
+    }
+    .nav-link {
+      color: #007bff;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .nav-link:hover {
+      text-decoration: underline;
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+    }
+    .chart-container {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .chart-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: #333;
+    }
+    .chart {
+      width: 100%;
+      height: 300px;
+    }
+    .chart svg {
+      width: 100%;
+      height: 100%;
+    }
+    .axis-label {
+      font-size: 11px;
+      fill: #666;
+    }
+    .grid-line {
+      stroke: #e0e0e0;
+      stroke-width: 1;
+    }
+    .data-line {
+      fill: none;
+      stroke: #007bff;
+      stroke-width: 2;
+    }
+    .data-area {
+      fill: rgba(0, 123, 255, 0.1);
+    }
+    .data-point {
+      fill: #007bff;
+    }
+    .data-point:hover {
+      fill: #0056b3;
+      r: 6;
+    }
+    .bar {
+      fill: #007bff;
+    }
+    .bar.correct {
+      fill: #28a745;
+    }
+    .bar:hover {
+      opacity: 0.8;
+    }
+    .tooltip {
+      position: absolute;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      pointer-events: none;
+      display: none;
+      z-index: 100;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .stat-card {
+      background: white;
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .stat-value {
+      font-size: 28px;
+      font-weight: bold;
+      color: #333;
+    }
+    .stat-label {
+      font-size: 12px;
+      color: #666;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+    .loading {
+      text-align: center;
+      padding: 60px 20px;
+      color: #666;
+    }
+    .error {
+      background: #fee;
+      color: #c00;
+      padding: 20px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .legend {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      margin-top: 12px;
+      font-size: 12px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+    }
+    .shortcut-hint {
+      font-size: 11px;
+      color: #999;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Learning Curve</h1>
+    <div class="nav-links">
+      <a href="/" class="nav-link">Clues</a>
+      <a href="/puzzles.html" class="nav-link">Puzzles</a>
+      <a href="/recommendations.html" class="nav-link">Recs</a>
+      <a href="/research.html" class="nav-link">Research</a>
+      <a href="/quiz.html" class="nav-link">Quiz</a>
+      <a href="/performance.html" class="nav-link">Performance</a>
+    </div>
+  </header>
+  <p class="subtitle">Track your progress over time</p>
+  <p class="shortcut-hint">Keyboard shortcuts: Q = Quiz, P = Puzzles, R = Recommendations</p>
+
+  <div id="content">
+    <div class="loading">Loading learning data...</div>
+  </div>
+
+  <div class="tooltip" id="tooltip"></div>
+
+  <script>
+    const API_BASE = '';
+
+    async function loadLearningData() {
+      const container = document.getElementById('content');
+
+      try {
+        const res = await fetch(`${API_BASE}/api/learning-curve`);
+        if (!res.ok) throw new Error('Failed to load data');
+
+        const data = await res.json();
+
+        if (data.totalAttempts === 0) {
+          container.innerHTML = '<div class="loading">No quiz data yet. Complete some quizzes to see your learning curve!</div>';
+          return;
+        }
+
+        renderDashboard(data);
+      } catch (err) {
+        container.innerHTML = `<div class="error">${err.message}</div>`;
+      }
+    }
+
+    function renderDashboard(data) {
+      const container = document.getElementById('content');
+      const { dailyStats, rollingWilson, totalAttempts } = data;
+
+      // Calculate summary stats
+      const totalCorrect = dailyStats.reduce((sum, d) => sum + d.correct, 0);
+      const overallPercent = Math.round((totalCorrect / totalAttempts) * 100);
+      const currentWilson = rollingWilson.length > 0
+        ? Math.round(rollingWilson[rollingWilson.length - 1].wilson * 100)
+        : 0;
+      const daysActive = dailyStats.length;
+
+      container.innerHTML = `
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value">${totalAttempts}</div>
+            <div class="stat-label">Total Attempts</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${overallPercent}%</div>
+            <div class="stat-label">Overall Accuracy</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${currentWilson}%</div>
+            <div class="stat-label">Current Wilson Score</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${daysActive}</div>
+            <div class="stat-label">Days Active</div>
+          </div>
+        </div>
+
+        <div class="chart-container">
+          <div class="chart-title">Wilson Score Over Time (Confidence-Adjusted Accuracy)</div>
+          <div class="chart" id="wilsonChart"></div>
+        </div>
+
+        <div class="chart-container">
+          <div class="chart-title">Daily Activity</div>
+          <div class="chart" id="dailyChart"></div>
+          <div class="legend">
+            <div class="legend-item">
+              <div class="legend-color" style="background: #28a745;"></div>
+              <span>Correct</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background: #007bff;"></div>
+              <span>Incorrect</span>
+            </div>
+          </div>
+        </div>
+      `;
+
+      renderWilsonChart(rollingWilson);
+      renderDailyChart(dailyStats);
+    }
+
+    function renderWilsonChart(data) {
+      if (data.length < 2) return;
+
+      const container = document.getElementById('wilsonChart');
+      const width = container.clientWidth;
+      const height = 300;
+      const padding = { top: 20, right: 30, bottom: 40, left: 50 };
+
+      const chartWidth = width - padding.left - padding.right;
+      const chartHeight = height - padding.top - padding.bottom;
+
+      const minTime = data[0].timestamp;
+      const maxTime = data[data.length - 1].timestamp;
+      const timeRange = maxTime - minTime || 1;
+
+      const xScale = (t) => padding.left + ((t - minTime) / timeRange) * chartWidth;
+      const yScale = (v) => padding.top + (1 - v) * chartHeight;
+
+      // Build path
+      let pathD = `M ${xScale(data[0].timestamp)} ${yScale(data[0].wilson)}`;
+      for (let i = 1; i < data.length; i++) {
+        pathD += ` L ${xScale(data[i].timestamp)} ${yScale(data[i].wilson)}`;
+      }
+
+      // Build area path
+      let areaD = pathD + ` L ${xScale(data[data.length - 1].timestamp)} ${yScale(0)} L ${xScale(data[0].timestamp)} ${yScale(0)} Z`;
+
+      // Grid lines
+      let gridLines = '';
+      for (let i = 0; i <= 10; i++) {
+        const y = yScale(i / 10);
+        gridLines += `<line class="grid-line" x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}"/>`;
+        if (i % 2 === 0) {
+          gridLines += `<text class="axis-label" x="${padding.left - 8}" y="${y + 4}" text-anchor="end">${i * 10}%</text>`;
+        }
+      }
+
+      // Data points
+      let points = '';
+      for (const point of data) {
+        const x = xScale(point.timestamp);
+        const y = yScale(point.wilson);
+        points += `<circle class="data-point" cx="${x}" cy="${y}" r="4"
+          data-tooltip="${formatDate(point.timestamp)}: ${Math.round(point.wilson * 100)}% (${point.correct}/${point.total})"/>`;
+      }
+
+      // X-axis labels
+      let xLabels = '';
+      const labelCount = Math.min(6, data.length);
+      for (let i = 0; i < labelCount; i++) {
+        const idx = Math.floor(i * (data.length - 1) / (labelCount - 1));
+        const x = xScale(data[idx].timestamp);
+        xLabels += `<text class="axis-label" x="${x}" y="${height - 10}" text-anchor="middle">${formatShortDate(data[idx].timestamp)}</text>`;
+      }
+
+      container.innerHTML = `
+        <svg viewBox="0 0 ${width} ${height}">
+          ${gridLines}
+          <path class="data-area" d="${areaD}"/>
+          <path class="data-line" d="${pathD}"/>
+          ${points}
+          ${xLabels}
+        </svg>
+      `;
+
+      // Add tooltip handlers
+      container.querySelectorAll('.data-point').forEach(el => {
+        el.addEventListener('mouseenter', (e) => showTooltip(e, el.dataset.tooltip));
+        el.addEventListener('mouseleave', hideTooltip);
+      });
+    }
+
+    function renderDailyChart(data) {
+      if (data.length === 0) return;
+
+      const container = document.getElementById('dailyChart');
+      const width = container.clientWidth;
+      const height = 300;
+      const padding = { top: 20, right: 30, bottom: 60, left: 50 };
+
+      const chartWidth = width - padding.left - padding.right;
+      const chartHeight = height - padding.top - padding.bottom;
+
+      const maxTotal = Math.max(...data.map(d => d.total));
+      const barWidth = Math.min(30, (chartWidth / data.length) - 2);
+
+      const xScale = (i) => padding.left + (i + 0.5) * (chartWidth / data.length);
+      const yScale = (v) => padding.top + (1 - v / maxTotal) * chartHeight;
+
+      // Grid lines
+      let gridLines = '';
+      const gridSteps = 5;
+      for (let i = 0; i <= gridSteps; i++) {
+        const val = Math.round(maxTotal * i / gridSteps);
+        const y = yScale(val);
+        gridLines += `<line class="grid-line" x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}"/>`;
+        gridLines += `<text class="axis-label" x="${padding.left - 8}" y="${y + 4}" text-anchor="end">${val}</text>`;
+      }
+
+      // Bars
+      let bars = '';
+      data.forEach((d, i) => {
+        const x = xScale(i) - barWidth / 2;
+        const incorrectHeight = (d.total - d.correct) / maxTotal * chartHeight;
+        const correctHeight = d.correct / maxTotal * chartHeight;
+
+        // Incorrect (bottom)
+        bars += `<rect class="bar" x="${x}" y="${yScale(d.total - d.correct)}"
+          width="${barWidth}" height="${incorrectHeight}"
+          data-tooltip="${d.date}: ${d.total - d.correct} incorrect"/>`;
+
+        // Correct (top, stacked)
+        bars += `<rect class="bar correct" x="${x}" y="${yScale(d.total)}"
+          width="${barWidth}" height="${correctHeight}"
+          data-tooltip="${d.date}: ${d.correct} correct"/>`;
+      });
+
+      // X-axis labels (show subset if too many)
+      let xLabels = '';
+      const maxLabels = 10;
+      const step = Math.ceil(data.length / maxLabels);
+      data.forEach((d, i) => {
+        if (i % step === 0) {
+          const x = xScale(i);
+          xLabels += `<text class="axis-label" x="${x}" y="${height - 30}" text-anchor="middle" transform="rotate(-45 ${x} ${height - 30})">${formatShortDate(new Date(d.date).getTime())}</text>`;
+        }
+      });
+
+      container.innerHTML = `
+        <svg viewBox="0 0 ${width} ${height}">
+          ${gridLines}
+          ${bars}
+          ${xLabels}
+        </svg>
+      `;
+
+      // Add tooltip handlers
+      container.querySelectorAll('.bar').forEach(el => {
+        el.addEventListener('mouseenter', (e) => showTooltip(e, el.dataset.tooltip));
+        el.addEventListener('mouseleave', hideTooltip);
+      });
+    }
+
+    function formatDate(timestamp) {
+      return new Date(timestamp).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+    }
+
+    function formatShortDate(timestamp) {
+      return new Date(timestamp).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric'
+      });
+    }
+
+    function showTooltip(event, text) {
+      const tooltip = document.getElementById('tooltip');
+      tooltip.textContent = text;
+      tooltip.style.display = 'block';
+      tooltip.style.left = event.pageX + 10 + 'px';
+      tooltip.style.top = event.pageY - 30 + 'px';
+    }
+
+    function hideTooltip() {
+      document.getElementById('tooltip').style.display = 'none';
+    }
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.key.toLowerCase() === 'q') window.location.href = '/quiz.html';
+      if (e.key.toLowerCase() === 'p') window.location.href = '/puzzles.html';
+      if (e.key.toLowerCase() === 'r') window.location.href = '/recommendations.html';
+    });
+
+    loadLearningData();
+  </script>
+</body>
+</html>

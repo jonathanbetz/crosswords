@@ -20,7 +20,7 @@ const RECENT_ATTEMPTS_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 async function recordAttempt(req, res) {
   try {
-    const { clueId, puzzleDate, correct } = req.body;
+    const { clueId, puzzleDate, correct, answerLength } = req.body;
 
     if (!clueId || !puzzleDate || typeof correct !== 'boolean') {
       return res.status(400).json({ error: 'Missing clueId, puzzleDate, or correct' });
@@ -28,6 +28,7 @@ async function recordAttempt(req, res) {
 
     const key = `quiz:${puzzleDate}:${clueId}`;
     const clueKey = `${puzzleDate}:${clueId}`;
+    const hintsKey = `hints:${puzzleDate}:${clueId}`;
     const now = Date.now();
 
     // Get existing attempts or create new array
@@ -41,6 +42,22 @@ async function recordAttempt(req, res) {
 
     // Store attempts
     await kv.set(key, attempts);
+
+    // Update hints available
+    let hintsAvailable = await kv.get(hintsKey);
+    if (hintsAvailable === null && answerLength) {
+      // Initialize hints to 2x answer length
+      hintsAvailable = answerLength * 2;
+    }
+    if (hintsAvailable !== null) {
+      // Adjust hints based on result
+      if (correct) {
+        hintsAvailable = Math.max(0, hintsAvailable - 1);
+      } else {
+        hintsAvailable = hintsAvailable + 1;
+      }
+      await kv.set(hintsKey, hintsAvailable);
+    }
 
     // Also append to recent-attempts log for efficient incremental sync
     let recentAttempts = await kv.get(RECENT_ATTEMPTS_KEY) || [];
@@ -61,7 +78,7 @@ async function recordAttempt(req, res) {
     // Calculate and return stats
     const stats = calculateStats(attempts);
 
-    return res.status(200).json({ success: true, stats });
+    return res.status(200).json({ success: true, stats, hintsAvailable });
   } catch (error) {
     console.error('Error recording attempt:', error);
     return res.status(500).json({ error: 'Failed to record attempt' });
@@ -70,18 +87,25 @@ async function recordAttempt(req, res) {
 
 async function getStats(req, res) {
   try {
-    const { clueId, puzzleDate } = req.query;
+    const { clueId, puzzleDate, answerLength } = req.query;
 
     if (!clueId || !puzzleDate) {
       return res.status(400).json({ error: 'Missing clueId or puzzleDate' });
     }
 
     const key = `quiz:${puzzleDate}:${clueId}`;
+    const hintsKey = `hints:${puzzleDate}:${clueId}`;
     const attempts = await kv.get(key) || [];
+
+    // Get or initialize hints
+    let hintsAvailable = await kv.get(hintsKey);
+    if (hintsAvailable === null && answerLength) {
+      hintsAvailable = parseInt(answerLength) * 2;
+    }
 
     const stats = calculateStats(attempts);
 
-    return res.status(200).json({ stats });
+    return res.status(200).json({ stats, hintsAvailable });
   } catch (error) {
     console.error('Error getting stats:', error);
     return res.status(500).json({ error: 'Failed to get stats' });

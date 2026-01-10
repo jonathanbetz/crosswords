@@ -210,6 +210,7 @@
       <a href="/recommendations.html" class="nav-link">Recs</a>
       <a href="/research.html" class="nav-link">Research</a>
       <a href="/quiz.html" class="nav-link">Quiz</a>
+      <a href="/learning.html" class="nav-link">Learning</a>
     </div>
   </header>
   <p class="subtitle">Track your quiz performance across all clues</p>
@@ -452,6 +453,14 @@
       div.textContent = text;
       return div.innerHTML;
     }
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.key.toLowerCase() === 'q') window.location.href = '/quiz.html';
+      if (e.key.toLowerCase() === 'p') window.location.href = '/puzzles.html';
+      if (e.key.toLowerCase() === 'r') window.location.href = '/recommendations.html';
+    });
 
     // Load on page ready
     loadPerformance();
