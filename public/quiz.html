@@ -464,11 +464,16 @@
       return db.transaction(storeNames, mode);
     }
 
-    async function saveClues(clues) {
+    async function saveClues(clues, clearFirst = false) {
       return new Promise((resolve, reject) => {
         const tx = dbTransaction(['clues', 'attempts'], 'readwrite');
         const clueStore = tx.objectStore('clues');
         const attemptStore = tx.objectStore('attempts');
+
+        // Clear existing clues if requested (for full sync)
+        if (clearFirst) {
+          clueStore.clear();
+        }
 
         for (const clue of clues) {
           const key = `${clue.puzzleDate}:${clue.direction}-${clue.number}`;
@@ -757,9 +762,9 @@
           }
           console.log(`Incremental sync: ${data.clues.length} clues, ${data.newAttempts.length} attempt updates`);
         } else {
-          // Full sync: replace everything
-          await saveClues(data.clues);
-          console.log(`Full sync: ${data.clues.length} clues`);
+          // Full sync: clear and replace everything
+          await saveClues(data.clues, true);
+          console.log(`Full sync: ${data.clues.length} clues (cleared old data)`);
         }
 
         await setSyncMeta({ timestamp: data.fetchedAt, includeCompleted });
