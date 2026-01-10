@@ -143,14 +143,19 @@
       background: #e3f2fd;
     }
     .letter-input.from-pattern {
-      color: #2e7d32;
-      background: #e8f5e9;
-      border-color: #a5d6a7;
+      color: #333;
+      background: white;
+      border-color: #ddd;
     }
-    .letter-input.from-hint {
-      color: #856404;
-      background: #fff3cd;
-      border-color: #ffc107;
+    .letter-input.hint-correct {
+      color: #2e7d32;
+      background: #c8e6c9;
+      border-color: #4caf50;
+    }
+    .letter-input.hint-incorrect {
+      color: #c62828;
+      background: #ffcdd2;
+      border-color: #f44336;
     }
     .letter-input.user-entered {
       color: #333;
@@ -377,6 +382,7 @@
     let currentClue = null;
     let submitted = false;
     let hintUsed = false;
+    let hintCheckedLetters = []; // Track which letters have been checked via hint
     let sessionStats = { correct: 0, total: 0 };
     let includeCompleted = false;
     let isOnline = navigator.onLine;
@@ -861,6 +867,7 @@
       container.innerHTML = '<div class="loading">Loading clue...</div>';
       submitted = false;
       hintUsed = false;
+      hintCheckedLetters = [];
 
       try {
         const clue = await selectNextClue();
@@ -1032,33 +1039,53 @@
       const answer = currentClue.answer.toUpperCase();
       const input = inputs[targetIdx];
       const correctChar = answer[targetIdx];
-
-      // Only reveal if the square is empty or incorrect
       const userChar = input.value.toUpperCase();
-      if (userChar === correctChar) return;
-
-      // Reveal the letter
-      input.value = correctChar;
-      input.classList.remove('empty', 'user-entered', 'from-pattern');
-      input.classList.add('from-hint');
+      const isAlreadyIncorrect = input.classList.contains('hint-incorrect');
 
       // Mark that hint was used
       hintUsed = true;
 
-      // Check if all squares are now filled correctly
-      const allFilled = Array.from(inputs).every((inp, idx) => {
-        return inp.value.toUpperCase() === answer[idx];
-      });
-
-      if (allFilled) {
-        checkAnswer();
+      // If already marked incorrect (red), replace with correct letter
+      if (isAlreadyIncorrect) {
+        input.value = correctChar;
+        input.classList.remove('hint-incorrect', 'empty', 'user-entered', 'from-pattern');
+        input.classList.add('hint-correct');
+        // Move to next unchecked letter
+        focusNextUncheckedInput(targetIdx);
         return;
       }
 
-      // Focus the next empty input
-      const nextEmpty = findNextEmptyInput(targetIdx);
-      if (nextEmpty) {
-        nextEmpty.focus();
+      // Mark this letter as checked
+      hintCheckedLetters[targetIdx] = true;
+
+      // Check if user's answer is correct
+      if (userChar === correctChar) {
+        input.classList.remove('empty', 'user-entered', 'from-pattern');
+        input.classList.add('hint-correct');
+      } else {
+        input.classList.remove('empty', 'user-entered', 'from-pattern');
+        input.classList.add('hint-incorrect');
+      }
+
+      // Focus the input so user can correct it or see the result
+      input.focus();
+    }
+
+    function focusNextUncheckedInput(currentIdx) {
+      const inputs = document.querySelectorAll('.letter-input');
+      // Find next letter that hasn't been checked via hint
+      for (let i = currentIdx + 1; i < inputs.length; i++) {
+        if (!hintCheckedLetters[i]) {
+          inputs[i].focus();
+          return;
+        }
+      }
+      // If none found after, look from the beginning
+      for (let i = 0; i < currentIdx; i++) {
+        if (!hintCheckedLetters[i]) {
+          inputs[i].focus();
+          return;
+        }
       }
     }
 
@@ -1068,20 +1095,31 @@
       const inputs = document.querySelectorAll('.letter-input');
       const answer = currentClue.answer.toUpperCase();
 
-      // Find all empty or incorrect inputs
-      const emptyIndices = [];
-      inputs.forEach((input, idx) => {
-        const userChar = input.value.toUpperCase();
-        const correctChar = answer[idx];
-        if (!userChar || userChar !== correctChar) {
-          emptyIndices.push(idx);
+      // Find the first letter that:
+      // 1. Hasn't been checked yet, OR
+      // 2. Is currently marked incorrect (red)
+      let targetIdx = -1;
+
+      // First, look for unchecked letters
+      for (let i = 0; i < inputs.length; i++) {
+        if (!hintCheckedLetters[i]) {
+          targetIdx = i;
+          break;
         }
-      });
+      }
 
-      if (emptyIndices.length === 0) return;
+      // If all letters have been checked, look for incorrect ones to reveal
+      if (targetIdx === -1) {
+        for (let i = 0; i < inputs.length; i++) {
+          if (inputs[i].classList.contains('hint-incorrect')) {
+            targetIdx = i;
+            break;
+          }
+        }
+      }
 
-      // Pick the left-most empty/incorrect position to reveal
-      const targetIdx = emptyIndices[0];
+      if (targetIdx === -1) return; // All letters checked and correct
+
       useHintForSquare(targetIdx);
     }
 
@@ -1103,7 +1141,7 @@
         const correctChar = answer[idx];
         userAnswer += userChar;
 
-        input.classList.remove('correct', 'incorrect', 'empty', 'user-entered', 'from-pattern');
+        input.classList.remove('correct', 'incorrect', 'empty', 'user-entered', 'from-pattern', 'hint-correct', 'hint-incorrect');
 
         if (userChar === correctChar) {
           input.classList.add('correct');
