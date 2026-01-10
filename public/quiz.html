@@ -1038,15 +1038,22 @@
 
       // Check if user's answer is correct
       if (userChar === correctChar) {
+        // Correct - mark green
         input.classList.remove('empty', 'user-entered', 'from-pattern');
         input.classList.add('hint-correct');
+        input.focus();
+      } else if (!userChar) {
+        // Empty - fill in correct letter
+        input.value = correctChar;
+        input.classList.remove('empty', 'user-entered', 'from-pattern');
+        input.classList.add('hint-correct');
+        focusNextUncheckedInput(targetIdx);
       } else {
+        // Incorrect - mark red
         input.classList.remove('empty', 'user-entered', 'from-pattern');
         input.classList.add('hint-incorrect');
+        input.focus();
       }
-
-      // Focus the input so user can correct it or see the result
-      input.focus();
     }
 
     function focusNextUncheckedInput(currentIdx) {
