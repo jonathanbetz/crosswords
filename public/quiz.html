@@ -1082,11 +1082,9 @@
           } else if (e.key === 'Enter') {
             if (submitted) {
               loadClue();
-            } else if (!e.target.value) {
-              // Empty square - use hint for this square
-              useHintForSquare(idx);
             } else {
-              checkAnswer();
+              // Use hint for this square (works for empty or filled squares)
+              useHintForSquare(idx);
             }
           }
         });
