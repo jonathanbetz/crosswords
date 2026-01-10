@@ -315,6 +315,20 @@
       background: #1e7e34;
       border-color: #1e7e34;
     }
+    .nyt-link {
+      padding: 8px 16px;
+      border: 1px solid #666;
+      background: white;
+      color: #666;
+      border-radius: 6px;
+      font-size: 14px;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .nyt-link:hover {
+      background: #666;
+      color: white;
+    }
     .import-btn {
       padding: 8px 16px;
       border: 1px solid #007bff;
@@ -505,11 +519,15 @@
         const puzzleInfo = puzzlesData.find(p => p.date === date);
         const isMarkedComplete = puzzleInfo?.markedComplete || false;
 
+        const nytDate = date.replace(/-/g, '/');
+        const nytUrl = `https://www.nytimes.com/crosswords/game/daily/${nytDate}`;
+
         container.innerHTML = `
           <div class="clues-header">
             <h2>${formatDate(date)}</h2>
             <div style="display: flex; align-items: center; gap: 12px;">
               <span class="clue-count">${data.clues.length} clues</span>
+              <a href="${nytUrl}" target="_blank" class="nyt-link">Open in NYT</a>
               <button class="import-btn" id="importBtn" onclick="importAnswers('${date}')">Import Answers</button>
               <span class="import-status" id="importStatus"></span>
               <button class="mark-complete-btn${isMarkedComplete ? ' completed' : ''}" onclick="togglePuzzleComplete('${date}')">${isMarkedComplete ? 'Completed' : 'Mark Complete'}</button>
