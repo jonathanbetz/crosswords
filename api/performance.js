@@ -28,6 +28,9 @@ export default async function handler(req, res) {
   }
 
   try {
+    const { includeCompleted } = req.query;
+    const showCompletedPuzzles = includeCompleted === 'true';
+
     // Get all puzzle dates
     const dates = await kv.smembers('puzzle:dates');
 
@@ -43,6 +46,9 @@ export default async function handler(req, res) {
       const record = await kv.get(key);
 
       if (record && record.clues) {
+        // Skip completed puzzles unless includeCompleted is true
+        if (record.markedComplete && !showCompletedPuzzles) continue;
+
         for (const clue of record.clues) {
           // Skip ignored clues
           if (clue.ignored) continue;
