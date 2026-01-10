@@ -315,6 +315,37 @@
       background: #1e7e34;
       border-color: #1e7e34;
     }
+    .import-btn {
+      padding: 8px 16px;
+      border: 1px solid #007bff;
+      background: white;
+      color: #007bff;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    .import-btn:hover {
+      background: #007bff;
+      color: white;
+    }
+    .import-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .import-status {
+      font-size: 12px;
+      margin-left: 8px;
+    }
+    .import-status.success {
+      color: #28a745;
+    }
+    .import-status.error {
+      color: #dc3545;
+    }
+    .import-status.loading {
+      color: #007bff;
+    }
   </style>
 </head>
 <body>
@@ -479,6 +510,8 @@
             <h2>${formatDate(date)}</h2>
             <div style="display: flex; align-items: center; gap: 12px;">
               <span class="clue-count">${data.clues.length} clues</span>
+              <button class="import-btn" id="importBtn" onclick="importAnswers('${date}')">Import Answers</button>
+              <span class="import-status" id="importStatus"></span>
               <button class="mark-complete-btn${isMarkedComplete ? ' completed' : ''}" onclick="togglePuzzleComplete('${date}')">${isMarkedComplete ? 'Completed' : 'Mark Complete'}</button>
             </div>
           </div>
@@ -735,6 +768,40 @@
       } catch (err) {
         console.error('Error toggling puzzle complete:', err);
         alert('Failed to update puzzle status');
+      }
+    }
+
+    async function importAnswers(date) {
+      const btn = document.getElementById('importBtn');
+      const status = document.getElementById('importStatus');
+
+      btn.disabled = true;
+      status.className = 'import-status loading';
+      status.textContent = 'Importing...';
+
+      try {
+        const res = await fetch(`${API_BASE}/api/import-puzzle`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date })
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          status.className = 'import-status success';
+          status.textContent = `Updated ${data.updatedCount} answers`;
+          // Reload clues to show new answers
+          setTimeout(() => loadClues(date), 1000);
+        } else {
+          status.className = 'import-status error';
+          status.textContent = data.error || 'Import failed';
+        }
+      } catch (err) {
+        status.className = 'import-status error';
+        status.textContent = err.message;
+      } finally {
+        btn.disabled = false;
       }
     }
 

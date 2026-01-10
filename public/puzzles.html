@@ -210,97 +210,6 @@
         text-align: left;
       }
     }
-    .import-section {
-      background: white;
-      border-radius: 8px;
-      padding: 16px 20px;
-      margin-bottom: 20px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .import-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      cursor: pointer;
-    }
-    .import-header h3 {
-      margin: 0;
-      font-size: 16px;
-      color: #333;
-    }
-    .import-toggle {
-      color: #007bff;
-      font-size: 14px;
-    }
-    .import-content {
-      display: none;
-      margin-top: 16px;
-      padding-top: 16px;
-      border-top: 1px solid #eee;
-    }
-    .import-content.open {
-      display: block;
-    }
-    .import-form {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      align-items: flex-end;
-    }
-    .import-field {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .import-field label {
-      font-size: 12px;
-      color: #666;
-    }
-    .import-field input {
-      padding: 8px 12px;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      font-size: 14px;
-    }
-    .import-btn {
-      padding: 8px 16px;
-      background: #28a745;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      font-size: 14px;
-      cursor: pointer;
-    }
-    .import-btn:hover {
-      background: #218838;
-    }
-    .import-btn:disabled {
-      background: #ccc;
-      cursor: not-allowed;
-    }
-    .import-status {
-      margin-top: 12px;
-      padding: 10px;
-      border-radius: 6px;
-      font-size: 14px;
-    }
-    .import-status.success {
-      background: #d4edda;
-      color: #155724;
-    }
-    .import-status.error {
-      background: #f8d7da;
-      color: #721c24;
-    }
-    .import-status.loading {
-      background: #cce5ff;
-      color: #004085;
-    }
-    .import-note {
-      font-size: 12px;
-      color: #666;
-      margin-top: 12px;
-    }
   </style>
 </head>
 <body>
@@ -316,26 +225,6 @@
     </div>
   </header>
   <p class="subtitle">All puzzles sorted by progress and performance</p>
-
-  <div class="import-section">
-    <div class="import-header" onclick="toggleImport()">
-      <h3>Import Puzzle from Archive</h3>
-      <span class="import-toggle" id="importToggle">Show</span>
-    </div>
-    <div class="import-content" id="importContent">
-      <div class="import-form">
-        <div class="import-field">
-          <label for="importDate">Puzzle Date</label>
-          <input type="date" id="importDate" max="2018-12-31" value="2015-01-01">
-        </div>
-        <button class="import-btn" id="importBtn" onclick="importPuzzle()">Import</button>
-      </div>
-      <div id="importStatus"></div>
-      <p class="import-note">
-        Note: Only historical puzzles (before 2019) are available in the archive.
-      </p>
-    </div>
-  </div>
 
   <div class="controls">
     <div class="sort-control">
@@ -489,56 +378,6 @@
         month: 'short',
         day: 'numeric'
       });
-    }
-
-    // Import functions
-    function toggleImport() {
-      const content = document.getElementById('importContent');
-      const toggle = document.getElementById('importToggle');
-      const isOpen = content.classList.toggle('open');
-      toggle.textContent = isOpen ? 'Hide' : 'Show';
-    }
-
-    async function importPuzzle() {
-      const dateInput = document.getElementById('importDate');
-      const btn = document.getElementById('importBtn');
-      const status = document.getElementById('importStatus');
-      const date = dateInput.value;
-
-      if (!date) {
-        status.className = 'import-status error';
-        status.textContent = 'Please select a date';
-        return;
-      }
-
-      btn.disabled = true;
-      status.className = 'import-status loading';
-      status.textContent = 'Importing puzzle...';
-
-      try {
-        const res = await fetch(`${API_BASE}/api/import-puzzle`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ date })
-        });
-
-        const data = await res.json();
-
-        if (res.ok) {
-          status.className = 'import-status success';
-          status.textContent = `Imported ${data.clueCount} clues (${data.acrossCount} across, ${data.downCount} down)`;
-          // Reload puzzles list
-          loadPuzzles();
-        } else {
-          status.className = 'import-status error';
-          status.textContent = data.error || 'Import failed';
-        }
-      } catch (err) {
-        status.className = 'import-status error';
-        status.textContent = `Error: ${err.message}`;
-      } finally {
-        btn.disabled = false;
-      }
     }
 
     // Keyboard shortcuts

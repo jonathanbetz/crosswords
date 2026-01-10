@@ -19,11 +19,11 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' });
     }
 
-    // Check if puzzle already exists
-    const existingKey = `puzzle:${date}`;
-    const existing = await kv.get(existingKey);
-    if (existing) {
-      return res.status(409).json({ error: 'Puzzle already exists', puzzleDate: date });
+    // Check if puzzle exists
+    const puzzleKey = `puzzle:${date}`;
+    const existing = await kv.get(puzzleKey);
+    if (!existing || !existing.clues) {
+      return res.status(404).json({ error: 'Puzzle not found. Add clues first.' });
     }
 
     // Parse date components for GitHub URL
@@ -39,100 +39,88 @@ export default async function handler(req, res) {
       throw new Error(`GitHub fetch failed: ${response.status}`);
     }
 
-    const puzzleData = await response.json();
+    const archiveData = await response.json();
 
-    // Transform to our format
-    const clues = transformPuzzle(puzzleData);
+    // Build answer lookup from archive
+    const answerLookup = buildAnswerLookup(archiveData);
 
-    // Save to database
-    const record = {
-      puzzleDate: date,
-      clues,
-      savedAt: new Date().toISOString(),
-      importedFrom: 'github-archive'
+    // Update existing clues with answers
+    let updatedCount = 0;
+    let skippedCount = 0;
+
+    const updatedClues = existing.clues.map(clue => {
+      const key = `${clue.direction}-${clue.number}`;
+      const archiveAnswer = answerLookup[key];
+
+      if (archiveAnswer) {
+        // Only update if answer was empty or incomplete
+        const currentAnswer = clue.answer || '';
+        const pattern = clue.pattern || '';
+        const isIncomplete = currentAnswer.length !== pattern.length;
+
+        if (isIncomplete) {
+          updatedCount++;
+          return {
+            ...clue,
+            answer: archiveAnswer.toUpperCase()
+          };
+        } else {
+          skippedCount++;
+          return clue;
+        }
+      }
+      return clue;
+    });
+
+    // Save updated puzzle
+    const updatedRecord = {
+      ...existing,
+      clues: updatedClues,
+      updatedAt: new Date().toISOString(),
+      answersImportedFrom: 'github-archive'
     };
 
-    await kv.set(existingKey, record);
-    await kv.sadd('puzzle:dates', date);
+    await kv.set(puzzleKey, updatedRecord);
 
     return res.status(200).json({
       success: true,
       puzzleDate: date,
-      clueCount: clues.length,
-      acrossCount: clues.filter(c => c.direction === 'across').length,
-      downCount: clues.filter(c => c.direction === 'down').length
+      updatedCount,
+      skippedCount,
+      totalClues: existing.clues.length
     });
 
   } catch (error) {
-    console.error('Error importing puzzle:', error);
-    return res.status(500).json({ error: 'Failed to import puzzle', details: error.message });
+    console.error('Error importing answers:', error);
+    return res.status(500).json({ error: 'Failed to import answers', details: error.message });
   }
 }
 
-function transformPuzzle(data) {
-  const { grid, gridnums, clues: rawClues, answers, size } = data;
-  const cols = size.cols;
-  const rows = size.rows;
+function buildAnswerLookup(archiveData) {
+  const lookup = {};
+  const { clues: rawClues, answers } = archiveData;
 
-  // Build a map of cell number -> grid position
-  const numToPos = {};
-  for (let i = 0; i < gridnums.length; i++) {
-    if (gridnums[i] > 0) {
-      numToPos[gridnums[i]] = {
-        row: Math.floor(i / cols),
-        col: i % cols
-      };
-    }
-  }
-
-  const transformedClues = [];
-
-  // Process across clues
+  // Process across answers
   if (rawClues.across && answers.across) {
     rawClues.across.forEach((clueText, idx) => {
-      const answer = answers.across[idx];
-      // Extract clue number from the text (e.g., "1. Some clue text")
-      const match = clueText.match(/^(\d+)\.\s*(.*)$/);
-      if (match) {
+      const match = clueText.match(/^(\d+)\./);
+      if (match && answers.across[idx]) {
         const number = parseInt(match[1]);
-        const text = match[2];
-
-        transformedClues.push({
-          number,
-          direction: 'across',
-          text,
-          pattern: '_'.repeat(answer.length),
-          answer: answer.toUpperCase()
-        });
+        lookup[`across-${number}`] = answers.across[idx];
       }
     });
   }
 
-  // Process down clues
+  // Process down answers
   if (rawClues.down && answers.down) {
     rawClues.down.forEach((clueText, idx) => {
-      const answer = answers.down[idx];
-      const match = clueText.match(/^(\d+)\.\s*(.*)$/);
-      if (match) {
+      const match = clueText.match(/^(\d+)\./);
+      if (match && answers.down[idx]) {
         const number = parseInt(match[1]);
-        const text = match[2];
-
-        transformedClues.push({
-          number,
-          direction: 'down',
-          text,
-          pattern: '_'.repeat(answer.length),
-          answer: answer.toUpperCase()
-        });
+        lookup[`down-${number}`] = answers.down[idx];
       }
     });
   }
 
-  // Sort by number, then direction
-  transformedClues.sort((a, b) => {
-    if (a.number !== b.number) return a.number - b.number;
-    return a.direction === 'across' ? -1 : 1;
-  });
-
-  return transformedClues;
+  return lookup;
 }
