@@ -101,6 +101,13 @@
       color: #999;
       margin-bottom: 20px;
     }
+    .clue-meta .puzzle-link {
+      color: #007bff;
+      text-decoration: none;
+    }
+    .clue-meta .puzzle-link:hover {
+      text-decoration: underline;
+    }
     .letter-inputs {
       display: flex;
       gap: 3px;
@@ -983,7 +990,11 @@
           </div>
         </div>
         <div class="clue-text">${escapeHtml(currentClue.text)}</div>
-        <div class="clue-meta">${currentClue.direction.toUpperCase()} ${currentClue.number} - ${pattern.length} letters</div>
+        <div class="clue-meta">
+          ${currentClue.direction.toUpperCase()} ${currentClue.number} - ${pattern.length} letters
+          &nbsp;|&nbsp;
+          <a href="/?date=${currentClue.puzzleDate}" class="puzzle-link">${currentClue.puzzleDate}</a>
+        </div>
         <div class="letter-inputs" id="letterInputs">
           ${letterInputs}
         </div>
