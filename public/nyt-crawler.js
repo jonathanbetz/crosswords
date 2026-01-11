@@ -256,20 +256,22 @@
 
       const date = `${match[1]}-${match[2]}-${match[3]}`;
 
-      // Check if puzzle is solved by looking for data-star attribute (any value)
-      // data-star="true" = gold star (streak), data-star="false" = blue star (solved)
-      // No data-star attribute = unsolved
+      // Check if puzzle is solved by looking for star classes
+      // puzzleProgressGoldStar = solved with streak
+      // puzzleProgressBlueStar = solved without streak
+      // puzzleProgress4, puzzleProgress50, etc. = in progress (percentage)
       let isSolved = false;
 
-      // Check inside the link itself for any element with data-star attribute
-      if (link.querySelector('[data-star]')) {
+      // Check for star classes inside the link
+      const starEl = link.querySelector('.puzzleProgressGoldStar, .puzzleProgressBlueStar');
+      if (starEl) {
         isSolved = true;
       }
 
       // Also check the parent calendar item container
       if (!isSolved) {
         const container = link.closest('.archive_calendar-item');
-        if (container && container.querySelector('[data-star]')) {
+        if (container && container.querySelector('.puzzleProgressGoldStar, .puzzleProgressBlueStar')) {
           isSolved = true;
         }
       }
