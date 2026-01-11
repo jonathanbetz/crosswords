@@ -6,12 +6,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Use keys command to find all puzzle:* keys
-    const allKeys = await kv.keys('puzzle:????-??-??');
+    // Use scanIterator to find all puzzle:* keys
+    const foundDates = [];
 
-    const foundDates = allKeys
-      .filter(key => /^puzzle:\d{4}-\d{2}-\d{2}$/.test(key))
-      .map(key => key.replace('puzzle:', ''));
+    for await (const key of kv.scanIterator({ match: 'puzzle:????-??-??' })) {
+      if (/^puzzle:\d{4}-\d{2}-\d{2}$/.test(key)) {
+        foundDates.push(key.replace('puzzle:', ''));
+      }
+    }
 
     // Add all found dates to the set
     if (foundDates.length > 0) {
