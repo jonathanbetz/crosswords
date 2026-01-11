@@ -106,6 +106,22 @@
     .details-toggle:hover {
       background: #f8f9fa;
     }
+    .complete-btn {
+      background: #28a745;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .complete-btn:hover {
+      background: #1e7e34;
+    }
+    .complete-btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
     .clue-details {
       display: none;
       margin-top: 16px;
@@ -287,6 +303,7 @@
                 <a href="/?date=${puzzle.puzzleDate}" class="puzzle-link">Review Clues</a>
                 <a href="${nytUrl}" target="_blank" class="puzzle-link">Open in NYT</a>
                 <button class="details-toggle" onclick="toggleDetails(${index})">Show Details</button>
+                <button class="complete-btn" onclick="markComplete('${puzzle.puzzleDate}', this)">Mark Complete</button>
               </div>
               <div class="clue-details" id="details-${index}">
                 <div class="clue-list">
@@ -312,6 +329,33 @@
       } else {
         details.classList.add('open');
         button.textContent = 'Hide Details';
+      }
+    }
+
+    async function markComplete(puzzleDate, button) {
+      button.disabled = true;
+      button.textContent = 'Marking...';
+
+      try {
+        const res = await fetch(`/api/puzzle/${puzzleDate}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ markedComplete: true })
+        });
+
+        if (!res.ok) throw new Error('Failed to mark complete');
+
+        // Remove the puzzle card from the page
+        const card = button.closest('.puzzle-card');
+        card.style.transition = 'opacity 0.3s, transform 0.3s';
+        card.style.opacity = '0';
+        card.style.transform = 'translateX(20px)';
+        setTimeout(() => card.remove(), 300);
+      } catch (err) {
+        console.error('Error marking complete:', err);
+        button.disabled = false;
+        button.textContent = 'Mark Complete';
+        alert('Failed to mark puzzle as complete');
       }
     }
 
