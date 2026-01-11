@@ -464,14 +464,16 @@
     const svgCells = doc.querySelectorAll('g[data-group="cells"] g.xwd__cell');
     if (svgCells.length === 0) return grid;
 
-    // Dynamically detect cell size from the first rect's width
-    // (15x15 puzzles use ~33px cells, 21x21 Sunday puzzles use ~23px cells)
-    let cellSize = 33;
+    // Detect grid size from cell count (more reliable than calculating from positions)
+    // 15x15 = 225 cells, 21x21 = 441 cells
+    const cellCount = svgCells.length;
+    const detectedSize = Math.round(Math.sqrt(cellCount));
+
+    // Get cell dimensions for position calculation
     const firstRect = doc.querySelector('g[data-group="cells"] g.xwd__cell rect');
-    if (firstRect) {
-      const width = parseFloat(firstRect.getAttribute('width') || '33');
-      cellSize = width;
-    }
+    const cellWidth = firstRect ? parseFloat(firstRect.getAttribute('width') || '33') : 33;
+    const xOffset = firstRect ? parseFloat(firstRect.getAttribute('x') || '0') : 0;
+    const yOffset = firstRect ? parseFloat(firstRect.getAttribute('y') || '0') : 0;
 
     const cellData = [];
 
@@ -481,10 +483,8 @@
 
       const x = parseFloat(rect.getAttribute('x') || '0');
       const y = parseFloat(rect.getAttribute('y') || '0');
-      // Use the first cell's position as the offset (instead of hardcoded 3)
-      const offset = parseFloat(firstRect.getAttribute('x') || '3');
-      const col = Math.round((x - offset) / cellSize);
-      const row = Math.round((y - offset) / cellSize);
+      const col = Math.round((x - xOffset) / cellWidth);
+      const row = Math.round((y - yOffset) / cellWidth);
       const isBlack = rect.classList.contains('xwd__cell--block');
 
       let cellNumber = null;
@@ -510,9 +510,8 @@
 
     if (cellData.length === 0) return grid;
 
-    const maxRow = Math.max(...cellData.map(c => c.row));
-    const maxCol = Math.max(...cellData.map(c => c.col));
-    grid.size = Math.max(maxRow, maxCol) + 1;
+    // Use detected size from cell count (more reliable)
+    grid.size = detectedSize;
 
     grid.cells = new Array(grid.size * grid.size).fill(null).map(() => ({
       isBlack: false, letter: null, cellNumber: null
