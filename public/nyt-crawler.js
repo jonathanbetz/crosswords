@@ -522,8 +522,9 @@
         const scannedMonths = new Set(state.scannedMonths || []);
 
         let totalUnsolved = 0;
-        let totalAlreadyInSystem = 0;
         let totalSolvedOnNYT = 0;
+        let totalImported = 0;
+        let totalFailed = 0;
 
         for (let i = 0; i < allMonths.length; i++) {
           if (isPaused) {
@@ -555,91 +556,51 @@
           // Scan the page
           const puzzles = scanCurrentPage(ui);
           const unsolved = puzzles.filter(p => !p.solved && !existingSet.has(p.date));
-          const alreadyInSystem = puzzles.filter(p => existingSet.has(p.date)).length;
           const solvedOnNYT = puzzles.filter(p => p.solved).length;
 
-          // Add unsolved puzzles to state
-          for (const puzzle of unsolved) {
-            if (!state.unsolvedDates.includes(puzzle.date)) {
-              state.unsolvedDates.push(puzzle.date);
-            }
-          }
-
           totalUnsolved += unsolved.length;
-          totalAlreadyInSystem += alreadyInSystem;
           totalSolvedOnNYT += solvedOnNYT;
 
           scannedMonths.add(monthKey);
-          state.scannedMonths = Array.from(scannedMonths);
 
-          // Only log months with puzzles to import
+          // Import puzzles immediately as we find them
           if (unsolved.length > 0) {
-            ui.log(`${monthName} ${year}: ${unsolved.length} to import`, 'success');
+            ui.log(`${monthName} ${year}: importing ${unsolved.length} puzzles...`, 'success');
+
+            for (const puzzle of unsolved) {
+              if (isPaused) {
+                ui.setStatus('Paused');
+                ui.showStart();
+                return;
+              }
+
+              try {
+                const puzzleData = await fetchPuzzleData(puzzle.date);
+                if (!puzzleData.clues || puzzleData.clues.length === 0) {
+                  throw new Error('No clues found');
+                }
+                await importPuzzle(puzzle.date, puzzleData.clues);
+                totalImported++;
+                existingSet.add(puzzle.date); // Add to set so we don't re-import
+                ui.log(`  ${puzzle.date}: ${puzzleData.clues.length} clues`, 'info');
+              } catch (err) {
+                totalFailed++;
+                ui.log(`  ${puzzle.date}: ${err.message}`, 'error');
+              }
+
+              await delay(DELAY_BETWEEN_PUZZLES);
+            }
           }
 
           await delay(DELAY_BETWEEN_MONTHS);
         }
 
-        state.phase = 'importing';
-        ui.log(`Scan complete: ${totalUnsolved} to import, ${totalAlreadyInSystem} in system, ${totalSolvedOnNYT} solved on NYT`, 'success');
-      }
-
-      // Phase 3: Import puzzles
-      if (state.phase === 'importing') {
-        const toImport = state.unsolvedDates.filter(
-          d => !state.importedDates.includes(d) && !state.failedDates.some(f => f.date === d)
-        );
-
-        if (toImport.length === 0) {
-          ui.setStatus('All done!');
-          ui.setProgress(100, 100);
-          ui.log('No more puzzles to import.', 'success');
-          ui.showStart();
-          ui.disableStart();
-          return;
-        }
-
-        ui.setStatus(`Importing ${toImport.length} puzzles...`);
-
-        for (let i = 0; i < toImport.length; i++) {
-          if (isPaused) {
-            ui.setStatus('Paused');
-            ui.showStart();
-            return;
-          }
-
-          const date = toImport[i];
-          ui.setProgress(i, toImport.length);
-          ui.setSubstatus(`Importing ${date} (${i + 1}/${toImport.length})`);
-
-          try {
-            const puzzleData = await fetchPuzzleData(date);
-
-            if (!puzzleData.clues || puzzleData.clues.length === 0) {
-              throw new Error('No clues found');
-            }
-
-            await importPuzzle(date, puzzleData.clues);
-            state.importedDates.push(date);
-            saveState(state);
-            ui.log(`Imported ${date} (${puzzleData.clues.length} clues)`, 'success');
-          } catch (err) {
-            state.failedDates.push({ date, error: err.message });
-            saveState(state);
-            ui.log(`Failed ${date}: ${err.message}`, 'error');
-          }
-
-          await delay(DELAY_BETWEEN_PUZZLES);
-        }
-
-        state.phase = 'complete';
-        saveState(state);
+        ui.log(`Done! Imported ${totalImported}, failed ${totalFailed}, skipped ${totalSolvedOnNYT} solved`, 'success');
       }
 
       // Done
-      ui.setStatus('Import complete!');
+      ui.setStatus('Complete!');
       ui.setProgress(100, 100);
-      ui.log(`Imported ${state.importedDates.length} puzzles. ${state.failedDates.length} failed.`, 'success');
       ui.showStart();
       ui.disableStart();
 
