@@ -204,6 +204,13 @@
     .skip-btn:hover {
       background: #545b62;
     }
+    .ignore-btn {
+      background: #dc3545;
+      color: white;
+    }
+    .ignore-btn:hover {
+      background: #c82333;
+    }
     .hint-btn {
       background: #ffc107;
       color: #212529;
@@ -1016,6 +1023,7 @@
           <button class="submit-btn" id="submitBtn" onclick="checkAnswer()">Check Answer</button>
           <button class="hint-btn" id="hintBtn" onclick="useHint()" ${hintBtnDisabled}>Hint</button>
           <button class="skip-btn" onclick="skipClue()">Skip</button>
+          <button class="ignore-btn" onclick="ignoreClue()">Ignore</button>
         </div>
         <div class="hints-display">
           Hints remaining: <span class="hints-count ${hintsClass}" id="hintsCount">${hintsAvailable}</span>
@@ -1354,6 +1362,51 @@
 
       updateStats();
       loadClue();
+    }
+
+    async function ignoreClue() {
+      if (!currentClue) return;
+
+      const clueId = `${currentClue.direction}-${currentClue.number}`;
+      const puzzleDate = currentClue.puzzleDate;
+
+      try {
+        // Mark as ignored on server
+        if (isOnline) {
+          const res = await fetch(`${API_BASE}/api/clue/${clueId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              puzzleDate,
+              updates: { ignored: true }
+            })
+          });
+
+          if (!res.ok) {
+            console.error('Failed to ignore clue on server');
+          }
+        }
+
+        // Remove from local IndexedDB
+        await removeLocalClue(currentClue.key);
+
+        // Load next clue
+        loadClue();
+      } catch (err) {
+        console.error('Error ignoring clue:', err);
+        loadClue();
+      }
+    }
+
+    async function removeLocalClue(clueKey) {
+      return new Promise((resolve, reject) => {
+        const tx = dbTransaction('clues', 'readwrite');
+        const store = tx.objectStore('clues');
+        store.delete(clueKey);
+
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
     }
 
     function displayClueStats(stats) {
