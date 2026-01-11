@@ -416,18 +416,40 @@
       const text = textEl.textContent.trim();
       if (isNaN(number) || !text) return;
 
-      // Determine direction from parent
+      // Determine direction by walking up DOM tree
       let direction = 'across';
       let parent = el.parentElement;
-      while (parent) {
-        const cls = parent.className || '';
-        if (/down/i.test(cls)) { direction = 'down'; break; }
-        if (/across/i.test(cls)) { direction = 'across'; break; }
+      while (parent && parent !== doc.body) {
+        // Check className (handle both string and SVGAnimatedString)
+        const cls = (typeof parent.className === 'string')
+          ? parent.className
+          : (parent.className?.baseVal || '');
+
+        // Check aria-label
+        const ariaLabel = parent.getAttribute('aria-label') || '';
+
+        // Check for section headers
+        const header = parent.querySelector('h3, h4, [class*="Header"], [class*="title"]');
+        const headerText = header ? header.textContent.toLowerCase() : '';
+
+        if (/down/i.test(cls) || /down/i.test(ariaLabel) || headerText.includes('down')) {
+          direction = 'down';
+          break;
+        }
+        if (/across/i.test(cls) || /across/i.test(ariaLabel) || headerText.includes('across')) {
+          direction = 'across';
+          break;
+        }
         parent = parent.parentElement;
       }
 
       // Get the current pattern from grid
       const pattern = getPatternFromGrid(grid, number, direction);
+
+      // Skip clues that are fully completed (no underscores)
+      if (pattern && !pattern.includes('_')) {
+        return; // Skip this clue
+      }
 
       clues.push({ number, direction, text, pattern, answer: pattern });
     });
