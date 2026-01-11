@@ -221,7 +221,7 @@
     return new Set(data.dates || []);
   }
 
-  async function scanArchiveMonth(year, month) {
+  async function scanArchiveMonth(year, month, ui) {
     // NYT archive URL for a specific month
     const url = `https://www.nytimes.com/crosswords/archive/daily/${year}/${String(month).padStart(2, '0')}`;
 
@@ -233,10 +233,11 @@
     const doc = parser.parseFromString(html, 'text/html');
 
     const puzzles = [];
+    const debugInfo = [];
 
     // Look for puzzle links in the calendar
-    // NYT uses various selectors, try multiple approaches
     const links = doc.querySelectorAll('a[href*="/crosswords/game/daily/"]');
+    debugInfo.push(`Found ${links.length} puzzle links`);
 
     for (const link of links) {
       const href = link.getAttribute('href');
@@ -246,15 +247,46 @@
       const date = `${match[1]}-${match[2]}-${match[3]}`;
 
       // Check if puzzle is solved - look for various indicators
-      const parent = link.closest('li, div, td');
-      const isSolved = parent && (
-        parent.classList.contains('solved') ||
-        parent.classList.contains('complete') ||
-        parent.querySelector('.solved, .complete, [data-solved="true"]') ||
-        link.classList.contains('solved')
-      );
+      const parent = link.closest('li, div, td, article, section');
+
+      // Collect debug info about classes
+      const linkClasses = link.className || '(none)';
+      const parentClasses = parent ? (parent.className || '(none)') : 'no parent';
+
+      // Check various solved indicators
+      const indicators = {
+        parentHasSolved: parent?.classList.contains('solved'),
+        parentHasComplete: parent?.classList.contains('complete'),
+        parentHasGold: parent?.classList.contains('gold'),
+        linkHasSolved: link.classList.contains('solved'),
+        linkHasComplete: link.classList.contains('complete'),
+        hasCheckmark: !!parent?.querySelector('svg, .checkmark, [data-solved]'),
+        linkText: link.textContent?.trim().substring(0, 30)
+      };
+
+      const isSolved = indicators.parentHasSolved ||
+                       indicators.parentHasComplete ||
+                       indicators.parentHasGold ||
+                       indicators.linkHasSolved ||
+                       indicators.linkHasComplete;
+
+      // Log first few puzzles for debugging
+      if (puzzles.length < 3) {
+        debugInfo.push(`  ${date}: link="${linkClasses}" parent="${parentClasses}" solved=${isSolved}`);
+      }
 
       puzzles.push({ date, solved: isSolved });
+    }
+
+    const solvedCount = puzzles.filter(p => p.solved).length;
+    const unsolvedCount = puzzles.filter(p => !p.solved).length;
+    debugInfo.push(`Total: ${puzzles.length} puzzles, ${solvedCount} solved, ${unsolvedCount} unsolved`);
+
+    // Log debug info
+    if (ui) {
+      for (const info of debugInfo) {
+        ui.log(info, 'info');
+      }
     }
 
     return puzzles;
@@ -460,8 +492,9 @@
           ui.setSubstatus(`Scanning ${year}-${String(month).padStart(2, '0')}`);
 
           try {
-            const puzzles = await scanArchiveMonth(year, month);
+            const puzzles = await scanArchiveMonth(year, month, ui);
             const unsolved = puzzles.filter(p => !p.solved && !existingSet.has(p.date));
+            const alreadyInSystem = puzzles.filter(p => existingSet.has(p.date)).length;
 
             for (const puzzle of unsolved) {
               if (!state.unsolvedDates.includes(puzzle.date)) {
@@ -472,9 +505,7 @@
             state.scannedMonths.push(key);
             saveState(state);
 
-            if (unsolved.length > 0) {
-              ui.log(`${key}: Found ${unsolved.length} unsolved puzzles`, 'success');
-            }
+            ui.log(`${key}: ${unsolved.length} to import, ${alreadyInSystem} already in system, ${puzzles.length - unsolved.length - alreadyInSystem} solved on NYT`, 'success');
           } catch (err) {
             ui.log(`${key}: ${err.message}`, 'error');
           }
