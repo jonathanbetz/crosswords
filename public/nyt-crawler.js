@@ -419,28 +419,18 @@
     try {
       // Load previous state or start fresh
       let state = loadState() || {
-        phase: 'init',
-        existingDates: [],
+        phase: 'scanning',
         scannedMonths: [],
         unsolvedDates: [],
         importedDates: [],
         failedDates: []
       };
 
-      // Phase 1: Get existing puzzles from our system
-      if (state.phase === 'init') {
-        ui.setStatus('Fetching existing puzzles...');
-        ui.log('Connecting to Crossword Trainer API...');
-
-        const existingSet = await fetchExistingPuzzles();
-        state.existingDates = Array.from(existingSet);
-        state.phase = 'scanning';
-        saveState(state);
-
-        ui.log(`Found ${existingSet.size} puzzles already in system`, 'success');
-      }
-
-      const existingSet = new Set(state.existingDates);
+      // Always fetch existing puzzles fresh (don't store in localStorage to avoid quota issues)
+      ui.setStatus('Fetching existing puzzles...');
+      ui.log('Connecting to Crossword Trainer API...');
+      const existingSet = await fetchExistingPuzzles();
+      ui.log(`Found ${existingSet.size} puzzles already in system`, 'success');
 
       // Phase 2: Scan NYT archive
       if (state.phase === 'scanning') {
