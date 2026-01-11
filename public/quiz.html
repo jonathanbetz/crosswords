@@ -1081,10 +1081,29 @@
             if (next) next.focus();
           } else if (e.key === 'Enter') {
             if (submitted) {
+              // Answer already checked - go to next clue
               loadClue();
             } else {
-              // Use hint for this square (works for empty or filled squares)
-              useHintForSquare(idx);
+              const inputs = document.querySelectorAll('.letter-input');
+              const allFilled = Array.from(inputs).every(inp => inp.value);
+
+              if (allFilled) {
+                // Clue is complete - check answer
+                checkAnswer();
+              } else if (e.target.value) {
+                // Current square is filled but clue incomplete - advance to next square
+                const nextEmpty = findNextEmptyInput(idx);
+                if (nextEmpty) {
+                  nextEmpty.focus();
+                } else {
+                  // No empty squares after this one, try from beginning
+                  const firstEmpty = findNextEmptyInput(-1);
+                  if (firstEmpty) firstEmpty.focus();
+                }
+              } else {
+                // Current square is empty - use hint
+                useHintForSquare(idx);
+              }
             }
           }
         });
