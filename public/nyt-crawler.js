@@ -256,30 +256,14 @@
       let isSolved = false;
       let solvedIndicator = '';
 
-      // Walk up the DOM tree looking for the puzzle container
+      // Walk up the DOM tree looking for data-star="true" (NYT's solved indicator)
       let el = link;
       for (let i = 0; i < 5 && el; i++) {
-        // Check for hasGoldStar class (NYT's solved indicator)
-        if (el.classList && el.classList.contains('hasGoldStar')) {
-          isSolved = true;
-          solvedIndicator = 'hasGoldStar class';
-          break;
-        }
-
-        // Check for data-star="true" attribute inside this element
         if (el.querySelector && el.querySelector('[data-star="true"]')) {
           isSolved = true;
           solvedIndicator = 'data-star=true';
           break;
         }
-
-        // Check for puzzleProgressGoldStar class
-        if (el.querySelector && el.querySelector('.puzzleProgressGoldStar')) {
-          isSolved = true;
-          solvedIndicator = 'puzzleProgressGoldStar class';
-          break;
-        }
-
         el = el.parentElement;
       }
 
