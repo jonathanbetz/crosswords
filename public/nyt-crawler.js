@@ -280,6 +280,58 @@
     return puzzles;
   }
 
+  function getAvailableMonths() {
+    // Get all available year/month combinations from the dropdowns
+    const yearSelect = document.querySelector('select[data-testid="year-selector"]');
+    const monthSelect = document.querySelector('select[data-testid="month-selector"]');
+
+    if (!yearSelect || !monthSelect) {
+      return [];
+    }
+
+    const months = [];
+    const years = Array.from(yearSelect.options).map(o => parseInt(o.value));
+
+    // For now, just return current year/month - we'll navigate and check each
+    for (const year of years) {
+      for (let month = 0; month < 12; month++) {
+        months.push({ year, month });
+      }
+    }
+
+    return months;
+  }
+
+  async function navigateToMonth(year, month, ui) {
+    const yearSelect = document.querySelector('select[data-testid="year-selector"]');
+    const monthSelect = document.querySelector('select[data-testid="month-selector"]');
+
+    if (!yearSelect || !monthSelect) {
+      throw new Error('Could not find archive dropdowns');
+    }
+
+    // Change year first
+    yearSelect.value = year.toString();
+    yearSelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+    // Wait for React to update
+    await delay(300);
+
+    // Now change month (check if it's enabled)
+    const monthOption = monthSelect.querySelector(`option[value="${month}"]`);
+    if (!monthOption || monthOption.disabled) {
+      return false; // Month not available for this year
+    }
+
+    monthSelect.value = month.toString();
+    monthSelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+    // Wait for calendar to update
+    await delay(500);
+
+    return true;
+  }
+
   async function fetchPuzzleData(date) {
     // Parse date
     const [year, month, day] = date.split('-');
@@ -446,19 +498,76 @@
       const existingSet = await fetchExistingPuzzles();
       ui.log(`Found ${existingSet.size} puzzles already in system`, 'success');
 
-      // Phase 2: Scan current page for puzzles
+      // Phase 2: Scan all archive pages
       if (state.phase === 'scanning') {
-        ui.setStatus('Scanning current page...');
+        ui.setStatus('Scanning archive...');
 
-        const puzzles = scanCurrentPage(ui);
-        const unsolved = puzzles.filter(p => !p.solved && !existingSet.has(p.date));
-        const alreadyInSystem = puzzles.filter(p => existingSet.has(p.date)).length;
-        const solvedOnNYT = puzzles.filter(p => p.solved).length;
+        // Get all year/month combinations to scan
+        const allMonths = getAvailableMonths();
+        const totalMonths = allMonths.length;
 
-        state.unsolvedDates = unsolved.map(p => p.date);
+        // Track which months we've scanned in this session
+        const scannedKey = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
+        const scannedMonths = new Set(state.scannedMonths || []);
+
+        let totalUnsolved = 0;
+        let totalAlreadyInSystem = 0;
+        let totalSolvedOnNYT = 0;
+
+        for (let i = 0; i < allMonths.length; i++) {
+          if (isPaused) {
+            ui.setStatus('Paused');
+            ui.showStart();
+            return;
+          }
+
+          const { year, month } = allMonths[i];
+          const monthKey = scannedKey(year, month);
+
+          // Skip already scanned months
+          if (scannedMonths.has(monthKey)) {
+            continue;
+          }
+
+          ui.setProgress(i, totalMonths);
+          const monthName = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month];
+          ui.setSubstatus(`Scanning ${monthName} ${year}...`);
+
+          // Navigate to this month
+          const available = await navigateToMonth(year, month, ui);
+          if (!available) {
+            // Month not available (e.g., future month)
+            scannedMonths.add(monthKey);
+            continue;
+          }
+
+          // Scan the page
+          const puzzles = scanCurrentPage(ui);
+          const unsolved = puzzles.filter(p => !p.solved && !existingSet.has(p.date));
+          const alreadyInSystem = puzzles.filter(p => existingSet.has(p.date)).length;
+          const solvedOnNYT = puzzles.filter(p => p.solved).length;
+
+          // Add unsolved puzzles to state
+          for (const puzzle of unsolved) {
+            if (!state.unsolvedDates.includes(puzzle.date)) {
+              state.unsolvedDates.push(puzzle.date);
+            }
+          }
+
+          totalUnsolved += unsolved.length;
+          totalAlreadyInSystem += alreadyInSystem;
+          totalSolvedOnNYT += solvedOnNYT;
+
+          scannedMonths.add(monthKey);
+          state.scannedMonths = Array.from(scannedMonths);
+
+          ui.log(`${monthName} ${year}: ${unsolved.length} to import, ${alreadyInSystem} in system, ${solvedOnNYT} solved`, 'info');
+
+          await delay(DELAY_BETWEEN_MONTHS);
+        }
+
         state.phase = 'importing';
-
-        ui.log(`Summary: ${unsolved.length} to import, ${alreadyInSystem} already in system, ${solvedOnNYT} solved on NYT`, 'success');
+        ui.log(`Scan complete: ${totalUnsolved} to import, ${totalAlreadyInSystem} in system, ${totalSolvedOnNYT} solved on NYT`, 'success');
       }
 
       // Phase 3: Import puzzles
