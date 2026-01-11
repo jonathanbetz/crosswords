@@ -360,6 +360,20 @@
     .import-status.loading {
       color: #007bff;
     }
+    .delete-btn {
+      padding: 8px 16px;
+      border: 1px solid #dc3545;
+      background: white;
+      color: #dc3545;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    .delete-btn:hover {
+      background: #dc3545;
+      color: white;
+    }
   </style>
 </head>
 <body>
@@ -531,6 +545,7 @@
               <button class="import-btn" id="importBtn" onclick="importAnswers('${date}')">Import Answers</button>
               <span class="import-status" id="importStatus"></span>
               <button class="mark-complete-btn${isMarkedComplete ? ' completed' : ''}" onclick="togglePuzzleComplete('${date}')">${isMarkedComplete ? 'Completed' : 'Mark Complete'}</button>
+              <button class="delete-btn" onclick="deletePuzzle('${date}')">Delete</button>
             </div>
           </div>
           <div class="clues-grid">
@@ -820,6 +835,40 @@
         status.textContent = err.message;
       } finally {
         btn.disabled = false;
+      }
+    }
+
+    async function deletePuzzle(date) {
+      if (!confirm(`Delete puzzle ${date}? This cannot be undone.`)) {
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/api/import-puzzle?date=${date}`, {
+          method: 'DELETE'
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          // Remove from local data
+          puzzlesData = puzzlesData.filter(p => p.date !== date);
+
+          // Navigate to next puzzle or show empty state
+          const visible = getVisiblePuzzles();
+          if (visible.length === 0) {
+            document.getElementById('puzzle-nav').style.display = 'none';
+            document.getElementById('clues').innerHTML = '<div class="empty-state">No saved puzzles yet</div>';
+          } else {
+            currentPuzzleIndex = Math.min(currentPuzzleIndex, visible.length - 1);
+            updateNav();
+            loadClues(visible[currentPuzzleIndex].date);
+          }
+        } else {
+          alert(data.error || 'Failed to delete puzzle');
+        }
+      } catch (err) {
+        alert('Error deleting puzzle: ' + err.message);
       }
     }
 
