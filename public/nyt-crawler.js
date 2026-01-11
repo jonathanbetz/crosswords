@@ -197,25 +197,19 @@
   }
 
   // ==================== State Management ====================
+  // Note: We don't persist state to localStorage because storing 10,000+
+  // puzzle dates would exceed the quota. The crawler runs in one session.
 
   function loadState() {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
+    return null; // Always start fresh
   }
 
   function saveState(state) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      ...state,
-      lastUpdated: Date.now()
-    }));
+    // No-op - don't persist to avoid quota issues
   }
 
   function clearState() {
-    localStorage.removeItem(STORAGE_KEY);
+    // No-op
   }
 
   // ==================== NYT Data Extraction ====================
