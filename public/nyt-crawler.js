@@ -351,120 +351,171 @@
     const [year, month, day] = date.split('-');
     const url = `https://www.nytimes.com/crosswords/game/daily/${year}/${month}/${day}`;
 
-    const res = await fetch(url, { credentials: 'include' });
-    if (!res.ok) throw new Error(`Failed to fetch puzzle ${date}`);
+    // Load puzzle page in hidden iframe to get rendered DOM
+    return new Promise((resolve, reject) => {
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1024px;height:768px;';
+      iframe.src = url;
 
-    const html = await res.text();
+      const timeout = setTimeout(() => {
+        iframe.remove();
+        reject(new Error('Timeout loading puzzle'));
+      }, 30000);
 
-    // Try to extract puzzle data from the page
-    // NYT embeds puzzle data in a script tag or window variable
+      iframe.onload = async () => {
+        try {
+          // Wait for puzzle to render
+          await delay(2000);
 
-    // Method 1: Look for window.gameData
-    let gameDataMatch = html.match(/window\.gameData\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/);
-    if (gameDataMatch) {
-      try {
-        const gameData = JSON.parse(gameDataMatch[1]);
-        return extractCluesFromGameData(gameData);
-      } catch (e) {
-        // Continue to next method
-      }
-    }
+          const doc = iframe.contentDocument;
+          if (!doc) throw new Error('Cannot access iframe');
 
-    // Method 2: Look for embedded JSON in script tags
-    const scriptMatch = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>(\{[\s\S]*?\})<\/script>/);
-    if (scriptMatch) {
-      try {
-        const nextData = JSON.parse(scriptMatch[1]);
-        return extractCluesFromNextData(nextData);
-      } catch (e) {
-        // Continue to next method
-      }
-    }
+          // Extract clues and grid from rendered page
+          const result = extractFromDocument(doc);
+          clearTimeout(timeout);
+          iframe.remove();
 
-    // Method 3: Try to find puzzle data in any script tag
-    const allScripts = html.match(/<script[^>]*>([\s\S]*?)<\/script>/g) || [];
-    for (const script of allScripts) {
-      if (script.includes('"clues"') && script.includes('"answers"')) {
-        const jsonMatch = script.match(/\{[\s\S]*"clues"[\s\S]*"answers"[\s\S]*\}/);
-        if (jsonMatch) {
-          try {
-            const data = JSON.parse(jsonMatch[0]);
-            return extractCluesFromGameData(data);
-          } catch (e) {
-            continue;
+          if (!result.clues || result.clues.length === 0) {
+            throw new Error('No clues found');
           }
-        }
-      }
-    }
 
-    throw new Error('Could not extract puzzle data from page');
+          resolve(result);
+        } catch (e) {
+          clearTimeout(timeout);
+          iframe.remove();
+          reject(e);
+        }
+      };
+
+      iframe.onerror = () => {
+        clearTimeout(timeout);
+        iframe.remove();
+        reject(new Error('Failed to load puzzle page'));
+      };
+
+      document.body.appendChild(iframe);
+    });
   }
 
-  function extractCluesFromGameData(gameData) {
-    // Handle NYT's puzzle data format
+  function extractFromDocument(doc) {
     const clues = [];
-    const puzzle = gameData.puzzle || gameData;
 
-    const clueData = puzzle.clues || {};
-    const answers = puzzle.answers || {};
+    // Extract grid state (letters user has filled in)
+    const grid = extractGridFromDoc(doc);
 
-    // Process across clues
-    if (Array.isArray(clueData.across)) {
-      for (const clue of clueData.across) {
-        clues.push({
-          number: clue.number || clue[0],
-          direction: 'across',
-          text: clue.text || clue.clue || clue[1],
-          answer: clue.answer || ''
-        });
+    // Extract clues from the clue list
+    const clueElements = doc.querySelectorAll('.xwd__clue--li, [class*="Clue-li"], li[class*="clue"]');
+
+    clueElements.forEach(el => {
+      const labelEl = el.querySelector('.xwd__clue--label, [class*="label"]');
+      const textEl = el.querySelector('.xwd__clue--text, [class*="text"]');
+
+      if (!labelEl || !textEl) return;
+
+      const number = parseInt(labelEl.textContent.trim(), 10);
+      const text = textEl.textContent.trim();
+      if (isNaN(number) || !text) return;
+
+      // Determine direction from parent
+      let direction = 'across';
+      let parent = el.parentElement;
+      while (parent) {
+        const cls = parent.className || '';
+        if (/down/i.test(cls)) { direction = 'down'; break; }
+        if (/across/i.test(cls)) { direction = 'across'; break; }
+        parent = parent.parentElement;
       }
-    }
 
-    // Process down clues
-    if (Array.isArray(clueData.down)) {
-      for (const clue of clueData.down) {
-        clues.push({
-          number: clue.number || clue[0],
-          direction: 'down',
-          text: clue.text || clue.clue || clue[1],
-          answer: clue.answer || ''
-        });
-      }
-    }
+      // Get the current pattern from grid
+      const pattern = getPatternFromGrid(grid, number, direction);
 
-    // Try to get answers from grid if not in clues
-    if (puzzle.grid && clues.some(c => !c.answer)) {
-      // Reconstruct answers from grid (complex, skip for now)
-    }
-
-    // Try answers object
-    if (answers.across) {
-      for (let i = 0; i < clues.length; i++) {
-        if (clues[i].direction === 'across' && !clues[i].answer) {
-          const ans = answers.across.find(a => a.number === clues[i].number || a[0] === clues[i].number);
-          if (ans) clues[i].answer = ans.answer || ans[1] || '';
-        }
-      }
-    }
-    if (answers.down) {
-      for (let i = 0; i < clues.length; i++) {
-        if (clues[i].direction === 'down' && !clues[i].answer) {
-          const ans = answers.down.find(a => a.number === clues[i].number || a[0] === clues[i].number);
-          if (ans) clues[i].answer = ans.answer || ans[1] || '';
-        }
-      }
-    }
+      clues.push({ number, direction, text, pattern, answer: pattern });
+    });
 
     return { clues };
   }
 
-  function extractCluesFromNextData(nextData) {
-    // Navigate through Next.js data structure
-    const props = nextData.props || {};
-    const pageProps = props.pageProps || {};
-    const gameData = pageProps.gameData || pageProps.puzzle || {};
+  function extractGridFromDoc(doc) {
+    const grid = { cells: [], size: 0, cellsByNumber: new Map() };
 
-    return extractCluesFromGameData(gameData);
+    // Try SVG grid (newer NYT layout)
+    const svgCells = doc.querySelectorAll('g[data-group="cells"] g.xwd__cell');
+    if (svgCells.length === 0) return grid;
+
+    const cellData = [];
+    const cellSize = 33;
+
+    svgCells.forEach(cell => {
+      const rect = cell.querySelector('rect');
+      if (!rect) return;
+
+      const x = parseFloat(rect.getAttribute('x') || '0');
+      const y = parseFloat(rect.getAttribute('y') || '0');
+      const col = Math.round((x - 3) / cellSize);
+      const row = Math.round((y - 3) / cellSize);
+      const isBlack = rect.classList.contains('xwd__cell--block');
+
+      let cellNumber = null;
+      let letter = null;
+
+      cell.querySelectorAll('text').forEach(text => {
+        const fontSize = parseFloat(text.getAttribute('font-size') || '0');
+        let content = '';
+        text.childNodes.forEach(node => {
+          if (node.nodeType === Node.TEXT_NODE) content += node.textContent;
+        });
+        content = content.trim();
+
+        if (fontSize > 12 && /^[A-Z]+$/i.test(content)) {
+          letter = content.toUpperCase();
+        } else if (fontSize <= 12 && /^\d+$/.test(content)) {
+          cellNumber = parseInt(content, 10);
+        }
+      });
+
+      cellData.push({ row, col, isBlack, cellNumber, letter });
+    });
+
+    if (cellData.length === 0) return grid;
+
+    const maxRow = Math.max(...cellData.map(c => c.row));
+    const maxCol = Math.max(...cellData.map(c => c.col));
+    grid.size = Math.max(maxRow, maxCol) + 1;
+
+    grid.cells = new Array(grid.size * grid.size).fill(null).map(() => ({
+      isBlack: false, letter: null, cellNumber: null
+    }));
+
+    cellData.forEach(({ row, col, isBlack, cellNumber, letter }) => {
+      const idx = row * grid.size + col;
+      if (idx >= 0 && idx < grid.cells.length) {
+        grid.cells[idx] = { isBlack, letter, cellNumber };
+        if (cellNumber) grid.cellsByNumber.set(cellNumber, { row, col });
+      }
+    });
+
+    return grid;
+  }
+
+  function getPatternFromGrid(grid, clueNumber, direction) {
+    const startPos = grid.cellsByNumber.get(clueNumber);
+    if (!startPos) return '';
+
+    let { row, col } = startPos;
+    const pattern = [];
+
+    while (row < grid.size && col < grid.size) {
+      const idx = row * grid.size + col;
+      const cell = grid.cells[idx];
+      if (!cell || cell.isBlack) break;
+
+      pattern.push(cell.letter || '_');
+
+      if (direction === 'across') col++;
+      else row++;
+    }
+
+    return pattern.join('');
   }
 
   async function importPuzzle(date, clues) {
