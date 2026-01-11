@@ -145,10 +145,10 @@
         </div>
         <div id="crawler-log"></div>
         <div id="crawler-actions">
-          <button class="crawler-btn crawler-btn-primary" id="crawler-start">Start Import</button>
+          <button class="crawler-btn crawler-btn-primary" id="crawler-start">Full Import</button>
+          <button class="crawler-btn crawler-btn-secondary" id="crawler-test">This Page</button>
           <button class="crawler-btn crawler-btn-secondary" id="crawler-pause" style="display:none">Pause</button>
           <button class="crawler-btn crawler-btn-secondary" id="crawler-copy">Copy Log</button>
-          <button class="crawler-btn crawler-btn-danger" id="crawler-reset">Reset</button>
         </div>
       </div>
     `;
@@ -157,9 +157,9 @@
 
     // Event handlers
     document.getElementById('crawler-close').onclick = () => container.remove();
-    document.getElementById('crawler-start').onclick = startCrawler;
+    document.getElementById('crawler-start').onclick = () => startCrawler(false);
+    document.getElementById('crawler-test').onclick = () => startCrawler(true);
     document.getElementById('crawler-pause').onclick = pauseCrawler;
-    document.getElementById('crawler-reset').onclick = resetCrawler;
     document.getElementById('crawler-copy').onclick = () => {
       const log = document.getElementById('crawler-log');
       const text = Array.from(log.querySelectorAll('.crawler-log-entry'))
@@ -491,43 +491,69 @@
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  async function startCrawler() {
+  async function scanAndImportPage(ui, existingSet) {
+    const puzzles = scanCurrentPage(ui);
+    const solved = puzzles.filter(p => p.solved).length;
+    const inSystem = puzzles.filter(p => existingSet.has(p.date)).length;
+    const unsolved = puzzles.filter(p => !p.solved && !existingSet.has(p.date));
+
+    let imported = 0;
+    let failed = 0;
+
+    for (const puzzle of unsolved) {
+      if (isPaused) {
+        break;
+      }
+
+      try {
+        const puzzleData = await fetchPuzzleData(puzzle.date);
+        if (!puzzleData.clues || puzzleData.clues.length === 0) {
+          throw new Error('No clues found');
+        }
+        await importPuzzle(puzzle.date, puzzleData.clues);
+        imported++;
+        existingSet.add(puzzle.date);
+        ui.log(`  ${puzzle.date}: ${puzzleData.clues.length} clues`, 'success');
+      } catch (err) {
+        failed++;
+        ui.log(`  ${puzzle.date}: ${err.message}`, 'error');
+      }
+
+      await delay(DELAY_BETWEEN_PUZZLES);
+    }
+
+    return { total: puzzles.length, solved, inSystem, imported, failed };
+  }
+
+  async function startCrawler(singlePageOnly = false) {
     ui = createUI();
     ui.showPause();
     isPaused = false;
 
     try {
-      // Load previous state or start fresh
-      let state = loadState() || {
-        phase: 'scanning',
-        scannedMonths: [],
-        unsolvedDates: [],
-        importedDates: [],
-        failedDates: []
-      };
-
-      // Always fetch existing puzzles fresh (don't store in localStorage to avoid quota issues)
+      // Always fetch existing puzzles fresh
       ui.setStatus('Fetching existing puzzles...');
       ui.log('Connecting to Crossword Trainer API...');
       const existingSet = await fetchExistingPuzzles();
       ui.log(`Found ${existingSet.size} puzzles already in system`, 'success');
 
-      // Phase 2: Scan all archive pages
-      if (state.phase === 'scanning') {
+      let totalImported = 0;
+      let totalFailed = 0;
+      let totalSolvedOnNYT = 0;
+
+      if (singlePageOnly) {
+        // Test mode: just scan and import current page
+        ui.setStatus('Scanning current page...');
+        const result = await scanAndImportPage(ui, existingSet);
+        totalImported = result.imported;
+        totalFailed = result.failed;
+        totalSolvedOnNYT = result.solved;
+      } else {
+        // Full mode: scan all archive pages
         ui.setStatus('Scanning archive...');
 
-        // Get all year/month combinations to scan
         const allMonths = getAvailableMonths();
         const totalMonths = allMonths.length;
-
-        // Track which months we've scanned in this session
-        const scannedKey = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
-        const scannedMonths = new Set(state.scannedMonths || []);
-
-        let totalUnsolved = 0;
-        let totalSolvedOnNYT = 0;
-        let totalImported = 0;
-        let totalFailed = 0;
 
         for (let i = 0; i < allMonths.length; i++) {
           if (isPaused) {
@@ -537,75 +563,37 @@
           }
 
           const { year, month } = allMonths[i];
-          const monthKey = scannedKey(year, month);
-
-          // Skip already scanned months
-          if (scannedMonths.has(monthKey)) {
-            continue;
-          }
+          const monthName = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month];
 
           ui.setProgress(i, totalMonths);
-          const monthName = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month];
-          ui.setSubstatus(`Scanning ${monthName} ${year}...`);
+          ui.setSubstatus(`${monthName} ${year}`);
 
           // Navigate to this month
           const available = await navigateToMonth(year, month, ui);
           if (!available) {
-            // Month not available (e.g., future month)
-            scannedMonths.add(monthKey);
+            ui.log(`${monthName} ${year}: skipped (not available)`, 'info');
             continue;
           }
 
-          // Scan the page
-          const puzzles = scanCurrentPage(ui);
-          const unsolved = puzzles.filter(p => !p.solved && !existingSet.has(p.date));
-          const solvedOnNYT = puzzles.filter(p => p.solved).length;
+          // Scan and import
+          const result = await scanAndImportPage(ui, existingSet);
+          totalImported += result.imported;
+          totalFailed += result.failed;
+          totalSolvedOnNYT += result.solved;
 
-          totalUnsolved += unsolved.length;
-          totalSolvedOnNYT += solvedOnNYT;
-
-          scannedMonths.add(monthKey);
-
-          // Import puzzles immediately as we find them
-          if (unsolved.length > 0) {
-            ui.log(`${monthName} ${year}: importing ${unsolved.length} puzzles...`, 'success');
-
-            for (const puzzle of unsolved) {
-              if (isPaused) {
-                ui.setStatus('Paused');
-                ui.showStart();
-                return;
-              }
-
-              try {
-                const puzzleData = await fetchPuzzleData(puzzle.date);
-                if (!puzzleData.clues || puzzleData.clues.length === 0) {
-                  throw new Error('No clues found');
-                }
-                await importPuzzle(puzzle.date, puzzleData.clues);
-                totalImported++;
-                existingSet.add(puzzle.date); // Add to set so we don't re-import
-                ui.log(`  ${puzzle.date}: ${puzzleData.clues.length} clues`, 'info');
-              } catch (err) {
-                totalFailed++;
-                ui.log(`  ${puzzle.date}: ${err.message}`, 'error');
-              }
-
-              await delay(DELAY_BETWEEN_PUZZLES);
-            }
-          }
+          // Log month summary
+          ui.log(`${monthName} ${year}: ${result.total} puzzles, ${result.solved} solved, ${result.inSystem} in system, ${result.imported} imported`,
+            result.imported > 0 ? 'success' : 'info');
 
           await delay(DELAY_BETWEEN_MONTHS);
         }
-
-        ui.log(`Done! Imported ${totalImported}, failed ${totalFailed}, skipped ${totalSolvedOnNYT} solved`, 'success');
       }
 
       // Done
+      ui.log(`Done! Imported ${totalImported}, failed ${totalFailed}, skipped ${totalSolvedOnNYT} solved`, 'success');
       ui.setStatus('Complete!');
       ui.setProgress(100, 100);
       ui.showStart();
-      ui.disableStart();
 
     } catch (err) {
       ui.log(`Error: ${err.message}`, 'error');
@@ -618,20 +606,6 @@
     isPaused = true;
     if (ui) {
       ui.log('Pausing...', 'info');
-    }
-  }
-
-  function resetCrawler() {
-    if (confirm('This will clear all progress. Are you sure?')) {
-      clearState();
-      if (ui) {
-        ui.setStatus('Ready to start');
-        ui.setSubstatus('');
-        ui.setProgress(0, 100);
-        ui.log('Progress reset.', 'info');
-        ui.showStart();
-        ui.enableStart();
-      }
     }
   }
 
