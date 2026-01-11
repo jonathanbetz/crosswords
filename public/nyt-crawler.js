@@ -451,7 +451,7 @@
         return; // Skip this clue
       }
 
-      clues.push({ number, direction, text, pattern, answer: pattern });
+      clues.push({ number, direction, text, pattern, answer: null });
     });
 
     return { clues };

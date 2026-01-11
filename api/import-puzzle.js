@@ -65,7 +65,7 @@ export default async function handler(req, res) {
       const archiveAnswer = answerLookup[key];
 
       if (archiveAnswer) {
-        // Only update if answer is missing or incomplete (contains underscores)
+        // Only update if answer (correct answer) is missing or incomplete
         const currentAnswer = clue.answer || '';
         const hasCompleteAnswer = currentAnswer.length > 0
           && currentAnswer.length === archiveAnswer.length
@@ -75,8 +75,8 @@ export default async function handler(req, res) {
           updatedCount++;
           return {
             ...clue,
-            answer: archiveAnswer.toUpperCase(),
-            pattern: archiveAnswer.toUpperCase() // Also set pattern if missing
+            answer: archiveAnswer.toUpperCase()
+            // Note: pattern stays as-is (current puzzle state with underscores)
           };
         } else {
           skippedCount++;
@@ -173,9 +173,10 @@ async function handleBulkImport(req, res) {
         continue;
       }
 
-      // Build pattern from answer if not provided
-      const answer = (clue.answer || '').toUpperCase();
-      const pattern = clue.pattern || answer || '_'.repeat(answer.length);
+      // pattern = current state from puzzle (with underscores for unfilled)
+      // answer = correct answer (null until imported from archive)
+      const pattern = clue.pattern || '';
+      const answer = clue.answer ? clue.answer.toUpperCase() : null;
 
       validatedClues.push({
         number: parseInt(clue.number, 10),
