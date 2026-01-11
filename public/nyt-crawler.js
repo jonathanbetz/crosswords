@@ -252,30 +252,34 @@
 
       const date = `${match[1]}-${match[2]}-${match[3]}`;
 
-      // Check if puzzle is solved - examine the link and its ancestors
+      // Check if puzzle is solved - look for NYT-specific indicators
       let isSolved = false;
       let solvedIndicator = '';
 
-      // Check the link itself
-      if (link.className) {
-        ui.log(`  ${date} link classes: "${link.className}"`, 'info');
-      }
-
-      // Walk up the DOM tree looking for solved indicators
+      // Walk up the DOM tree looking for the puzzle container
       let el = link;
       for (let i = 0; i < 5 && el; i++) {
-        const classes = el.className || '';
-        if (classes.includes('solved') || classes.includes('complete') || classes.includes('gold')) {
+        // Check for hasGoldStar class (NYT's solved indicator)
+        if (el.classList && el.classList.contains('hasGoldStar')) {
           isSolved = true;
-          solvedIndicator = `found "${classes}" at level ${i}`;
+          solvedIndicator = 'hasGoldStar class';
           break;
         }
-        // Check for SVG checkmarks or other indicators
-        if (el.querySelector && el.querySelector('svg.checkmark, .check, [data-testid*="check"]')) {
+
+        // Check for data-star="true" attribute inside this element
+        if (el.querySelector && el.querySelector('[data-star="true"]')) {
           isSolved = true;
-          solvedIndicator = `found checkmark at level ${i}`;
+          solvedIndicator = 'data-star=true';
           break;
         }
+
+        // Check for puzzleProgressGoldStar class
+        if (el.querySelector && el.querySelector('.puzzleProgressGoldStar')) {
+          isSolved = true;
+          solvedIndicator = 'puzzleProgressGoldStar class';
+          break;
+        }
+
         el = el.parentElement;
       }
 
