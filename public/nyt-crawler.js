@@ -256,19 +256,20 @@
 
       const date = `${match[1]}-${match[2]}-${match[3]}`;
 
-      // Check if puzzle is solved by looking for data-star="true" INSIDE the link
-      // or in the parent container (the calendar cell)
+      // Check if puzzle is solved by looking for data-star attribute (any value)
+      // data-star="true" = gold star (streak), data-star="false" = blue star (solved)
+      // No data-star attribute = unsolved
       let isSolved = false;
 
-      // First check inside the link itself
-      if (link.querySelector('[data-star="true"]')) {
+      // Check inside the link itself for any element with data-star attribute
+      if (link.querySelector('[data-star]')) {
         isSolved = true;
       }
 
       // Also check the parent calendar item container
       if (!isSolved) {
-        const container = link.closest('.archive_calendar-item, .calendar, [class*="calendar"]');
-        if (container && container.querySelector('[data-star="true"]')) {
+        const container = link.closest('.archive_calendar-item');
+        if (container && container.querySelector('[data-star]')) {
           isSolved = true;
         }
       }
