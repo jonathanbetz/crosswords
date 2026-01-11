@@ -65,9 +65,11 @@ export default async function handler(req, res) {
       const archiveAnswer = answerLookup[key];
 
       if (archiveAnswer) {
-        // Only update if answer is missing or incomplete
+        // Only update if answer is missing or incomplete (contains underscores)
         const currentAnswer = clue.answer || '';
-        const hasCompleteAnswer = currentAnswer.length > 0 && currentAnswer.length === archiveAnswer.length;
+        const hasCompleteAnswer = currentAnswer.length > 0
+          && currentAnswer.length === archiveAnswer.length
+          && !currentAnswer.includes('_');
 
         if (!hasCompleteAnswer) {
           updatedCount++;
