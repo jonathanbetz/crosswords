@@ -8,6 +8,11 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  // DELETE: remove a puzzle
+  if (req.method === 'DELETE') {
+    return handleDelete(req, res);
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -205,5 +210,37 @@ async function handleBulkImport(req, res) {
   } catch (error) {
     console.error('Error bulk importing puzzle:', error);
     return res.status(500).json({ error: 'Failed to import puzzle' });
+  }
+}
+
+// Delete a puzzle by date
+async function handleDelete(req, res) {
+  try {
+    const { date } = req.query;
+
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' });
+    }
+
+    const key = `puzzle:${date}`;
+    const existing = await kv.get(key);
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Puzzle not found', date });
+    }
+
+    // Delete the puzzle
+    await kv.del(key);
+
+    // Remove from the dates set
+    await kv.srem('puzzle:dates', date);
+
+    return res.status(200).json({
+      success: true,
+      deleted: date
+    });
+  } catch (error) {
+    console.error('Error deleting puzzle:', error);
+    return res.status(500).json({ error: 'Failed to delete puzzle' });
   }
 }
