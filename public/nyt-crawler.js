@@ -147,6 +147,7 @@
         <div id="crawler-actions">
           <button class="crawler-btn crawler-btn-primary" id="crawler-start">Start Import</button>
           <button class="crawler-btn crawler-btn-secondary" id="crawler-pause" style="display:none">Pause</button>
+          <button class="crawler-btn crawler-btn-secondary" id="crawler-copy">Copy Log</button>
           <button class="crawler-btn crawler-btn-danger" id="crawler-reset">Reset</button>
         </div>
       </div>
@@ -159,6 +160,17 @@
     document.getElementById('crawler-start').onclick = startCrawler;
     document.getElementById('crawler-pause').onclick = pauseCrawler;
     document.getElementById('crawler-reset').onclick = resetCrawler;
+    document.getElementById('crawler-copy').onclick = () => {
+      const log = document.getElementById('crawler-log');
+      const text = Array.from(log.querySelectorAll('.crawler-log-entry'))
+        .map(e => e.textContent)
+        .join('\n');
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById('crawler-copy');
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy Log', 2000);
+      });
+    };
 
     return {
       setStatus: (text) => {
@@ -225,24 +237,16 @@
     // Scan the current page's DOM for puzzle links
     const puzzles = [];
 
-    ui.log('Scanning current page DOM...', 'info');
-
-    // Look for puzzle links - try multiple selectors
+    // Look for puzzle links
     let links = document.querySelectorAll('a[href*="/crosswords/game/daily/"]');
-    ui.log(`Selector 'a[href*="/crosswords/game/daily/"]' found ${links.length} links`, 'info');
 
     if (links.length === 0) {
-      // Try other selectors
       links = document.querySelectorAll('a[href*="/game/daily/"]');
-      ui.log(`Selector 'a[href*="/game/daily/"]' found ${links.length} links`, 'info');
     }
 
     if (links.length === 0) {
-      // Log what links ARE on the page
-      const allLinks = document.querySelectorAll('a[href]');
-      ui.log(`Total links on page: ${allLinks.length}`, 'info');
-      const sampleLinks = Array.from(allLinks).slice(0, 10).map(a => a.href);
-      ui.log(`Sample links: ${sampleLinks.join(', ')}`, 'info');
+      ui.log('No puzzle links found on page', 'error');
+      return puzzles;
     }
 
     for (const link of links) {
@@ -252,30 +256,25 @@
 
       const date = `${match[1]}-${match[2]}-${match[3]}`;
 
-      // Check if puzzle is solved - look for NYT-specific indicators
+      // Check if puzzle is solved by looking for data-star="true" INSIDE the link
+      // or in the parent container (the calendar cell)
       let isSolved = false;
-      let solvedIndicator = '';
 
-      // Walk up the DOM tree looking for data-star="true" (NYT's solved indicator)
-      let el = link;
-      for (let i = 0; i < 5 && el; i++) {
-        if (el.querySelector && el.querySelector('[data-star="true"]')) {
-          isSolved = true;
-          solvedIndicator = 'data-star=true';
-          break;
-        }
-        el = el.parentElement;
+      // First check inside the link itself
+      if (link.querySelector('[data-star="true"]')) {
+        isSolved = true;
       }
 
-      if (puzzles.length < 5) {
-        ui.log(`  ${date}: solved=${isSolved} ${solvedIndicator}`, 'info');
+      // Also check the parent calendar item container
+      if (!isSolved) {
+        const container = link.closest('.archive_calendar-item, .calendar, [class*="calendar"]');
+        if (container && container.querySelector('[data-star="true"]')) {
+          isSolved = true;
+        }
       }
 
       puzzles.push({ date, solved: isSolved });
     }
-
-    const solvedCount = puzzles.filter(p => p.solved).length;
-    ui.log(`Found ${puzzles.length} puzzles: ${solvedCount} solved, ${puzzles.length - solvedCount} unsolved`, 'success');
 
     return puzzles;
   }
@@ -314,8 +313,8 @@
     yearSelect.value = year.toString();
     yearSelect.dispatchEvent(new Event('change', { bubbles: true }));
 
-    // Wait for React to update
-    await delay(300);
+    // Wait for React to update the month options
+    await delay(500);
 
     // Now change month (check if it's enabled)
     const monthOption = monthSelect.querySelector(`option[value="${month}"]`);
@@ -326,10 +325,22 @@
     monthSelect.value = month.toString();
     monthSelect.dispatchEvent(new Event('change', { bubbles: true }));
 
-    // Wait for calendar to update
-    await delay(500);
+    // Wait for calendar to fully render - retry until we see puzzle links
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await delay(400);
+      const links = document.querySelectorAll('a[href*="/crosswords/game/daily/"]');
+      if (links.length > 0) {
+        // Verify we're seeing the right month by checking the first link
+        const href = links[0].getAttribute('href');
+        const expectedPrefix = `/crosswords/game/daily/${year}/${String(month + 1).padStart(2, '0')}`;
+        if (href.includes(expectedPrefix)) {
+          return true;
+        }
+      }
+    }
 
-    return true;
+    // If we get here, calendar didn't load properly
+    return true; // Still return true to try scanning anyway
   }
 
   async function fetchPuzzleData(date) {
@@ -561,7 +572,10 @@
           scannedMonths.add(monthKey);
           state.scannedMonths = Array.from(scannedMonths);
 
-          ui.log(`${monthName} ${year}: ${unsolved.length} to import, ${alreadyInSystem} in system, ${solvedOnNYT} solved`, 'info');
+          // Only log months with puzzles to import
+          if (unsolved.length > 0) {
+            ui.log(`${monthName} ${year}: ${unsolved.length} to import`, 'success');
+          }
 
           await delay(DELAY_BETWEEN_MONTHS);
         }
