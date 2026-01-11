@@ -221,73 +221,73 @@
     return new Set(data.dates || []);
   }
 
-  async function scanArchiveMonth(year, month, ui) {
-    // NYT archive URL for a specific month
-    const url = `https://www.nytimes.com/crosswords/archive/daily/${year}/${String(month).padStart(2, '0')}`;
-
-    const res = await fetch(url, { credentials: 'include' });
-    if (!res.ok) throw new Error(`Failed to fetch archive for ${year}-${month}`);
-
-    const html = await res.text();
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-
+  function scanCurrentPage(ui) {
+    // Scan the current page's DOM for puzzle links
     const puzzles = [];
-    const debugInfo = [];
 
-    // Look for puzzle links in the calendar
-    const links = doc.querySelectorAll('a[href*="/crosswords/game/daily/"]');
-    debugInfo.push(`Found ${links.length} puzzle links`);
+    ui.log('Scanning current page DOM...', 'info');
+
+    // Look for puzzle links - try multiple selectors
+    let links = document.querySelectorAll('a[href*="/crosswords/game/daily/"]');
+    ui.log(`Selector 'a[href*="/crosswords/game/daily/"]' found ${links.length} links`, 'info');
+
+    if (links.length === 0) {
+      // Try other selectors
+      links = document.querySelectorAll('a[href*="/game/daily/"]');
+      ui.log(`Selector 'a[href*="/game/daily/"]' found ${links.length} links`, 'info');
+    }
+
+    if (links.length === 0) {
+      // Log what links ARE on the page
+      const allLinks = document.querySelectorAll('a[href]');
+      ui.log(`Total links on page: ${allLinks.length}`, 'info');
+      const sampleLinks = Array.from(allLinks).slice(0, 10).map(a => a.href);
+      ui.log(`Sample links: ${sampleLinks.join(', ')}`, 'info');
+    }
 
     for (const link of links) {
       const href = link.getAttribute('href');
-      const match = href.match(/\/crosswords\/game\/daily\/(\d{4})\/(\d{2})\/(\d{2})/);
+      const match = href.match(/\/(?:crosswords\/)?game\/daily\/(\d{4})\/(\d{2})\/(\d{2})/);
       if (!match) continue;
 
       const date = `${match[1]}-${match[2]}-${match[3]}`;
 
-      // Check if puzzle is solved - look for various indicators
-      const parent = link.closest('li, div, td, article, section');
+      // Check if puzzle is solved - examine the link and its ancestors
+      let isSolved = false;
+      let solvedIndicator = '';
 
-      // Collect debug info about classes
-      const linkClasses = link.className || '(none)';
-      const parentClasses = parent ? (parent.className || '(none)') : 'no parent';
+      // Check the link itself
+      if (link.className) {
+        ui.log(`  ${date} link classes: "${link.className}"`, 'info');
+      }
 
-      // Check various solved indicators
-      const indicators = {
-        parentHasSolved: parent?.classList.contains('solved'),
-        parentHasComplete: parent?.classList.contains('complete'),
-        parentHasGold: parent?.classList.contains('gold'),
-        linkHasSolved: link.classList.contains('solved'),
-        linkHasComplete: link.classList.contains('complete'),
-        hasCheckmark: !!parent?.querySelector('svg, .checkmark, [data-solved]'),
-        linkText: link.textContent?.trim().substring(0, 30)
-      };
+      // Walk up the DOM tree looking for solved indicators
+      let el = link;
+      for (let i = 0; i < 5 && el; i++) {
+        const classes = el.className || '';
+        if (classes.includes('solved') || classes.includes('complete') || classes.includes('gold')) {
+          isSolved = true;
+          solvedIndicator = `found "${classes}" at level ${i}`;
+          break;
+        }
+        // Check for SVG checkmarks or other indicators
+        if (el.querySelector && el.querySelector('svg.checkmark, .check, [data-testid*="check"]')) {
+          isSolved = true;
+          solvedIndicator = `found checkmark at level ${i}`;
+          break;
+        }
+        el = el.parentElement;
+      }
 
-      const isSolved = indicators.parentHasSolved ||
-                       indicators.parentHasComplete ||
-                       indicators.parentHasGold ||
-                       indicators.linkHasSolved ||
-                       indicators.linkHasComplete;
-
-      // Log first few puzzles for debugging
-      if (puzzles.length < 3) {
-        debugInfo.push(`  ${date}: link="${linkClasses}" parent="${parentClasses}" solved=${isSolved}`);
+      if (puzzles.length < 5) {
+        ui.log(`  ${date}: solved=${isSolved} ${solvedIndicator}`, 'info');
       }
 
       puzzles.push({ date, solved: isSolved });
     }
 
     const solvedCount = puzzles.filter(p => p.solved).length;
-    const unsolvedCount = puzzles.filter(p => !p.solved).length;
-    debugInfo.push(`Total: ${puzzles.length} puzzles, ${solvedCount} solved, ${unsolvedCount} unsolved`);
-
-    // Log debug info
-    if (ui) {
-      for (const info of debugInfo) {
-        ui.log(info, 'info');
-      }
-    }
+    ui.log(`Found ${puzzles.length} puzzles: ${solvedCount} solved, ${puzzles.length - solvedCount} unsolved`, 'success');
 
     return puzzles;
   }
@@ -458,64 +458,19 @@
       const existingSet = await fetchExistingPuzzles();
       ui.log(`Found ${existingSet.size} puzzles already in system`, 'success');
 
-      // Phase 2: Scan NYT archive
+      // Phase 2: Scan current page for puzzles
       if (state.phase === 'scanning') {
-        ui.setStatus('Scanning NYT archive...');
+        ui.setStatus('Scanning current page...');
 
-        // Scan from 1993 (when NYT crosswords started) to present
-        const currentYear = new Date().getFullYear();
-        const currentMonth = new Date().getMonth() + 1;
-        const startYear = 1993;
+        const puzzles = scanCurrentPage(ui);
+        const unsolved = puzzles.filter(p => !p.solved && !existingSet.has(p.date));
+        const alreadyInSystem = puzzles.filter(p => existingSet.has(p.date)).length;
+        const solvedOnNYT = puzzles.filter(p => p.solved).length;
 
-        const monthsToScan = [];
-        for (let year = startYear; year <= currentYear; year++) {
-          const endMonth = year === currentYear ? currentMonth : 12;
-          for (let month = 1; month <= endMonth; month++) {
-            const key = `${year}-${String(month).padStart(2, '0')}`;
-            if (!state.scannedMonths.includes(key)) {
-              monthsToScan.push({ year, month, key });
-            }
-          }
-        }
-
-        const totalMonths = monthsToScan.length + state.scannedMonths.length;
-
-        for (let i = 0; i < monthsToScan.length; i++) {
-          if (isPaused) {
-            ui.setStatus('Paused');
-            ui.showStart();
-            return;
-          }
-
-          const { year, month, key } = monthsToScan[i];
-          ui.setProgress(state.scannedMonths.length + i, totalMonths);
-          ui.setSubstatus(`Scanning ${year}-${String(month).padStart(2, '0')}`);
-
-          try {
-            const puzzles = await scanArchiveMonth(year, month, ui);
-            const unsolved = puzzles.filter(p => !p.solved && !existingSet.has(p.date));
-            const alreadyInSystem = puzzles.filter(p => existingSet.has(p.date)).length;
-
-            for (const puzzle of unsolved) {
-              if (!state.unsolvedDates.includes(puzzle.date)) {
-                state.unsolvedDates.push(puzzle.date);
-              }
-            }
-
-            state.scannedMonths.push(key);
-            saveState(state);
-
-            ui.log(`${key}: ${unsolved.length} to import, ${alreadyInSystem} already in system, ${puzzles.length - unsolved.length - alreadyInSystem} solved on NYT`, 'success');
-          } catch (err) {
-            ui.log(`${key}: ${err.message}`, 'error');
-          }
-
-          await delay(DELAY_BETWEEN_MONTHS);
-        }
-
+        state.unsolvedDates = unsolved.map(p => p.date);
         state.phase = 'importing';
-        saveState(state);
-        ui.log(`Scan complete. Found ${state.unsolvedDates.length} puzzles to import.`, 'success');
+
+        ui.log(`Summary: ${unsolved.length} to import, ${alreadyInSystem} already in system, ${solvedOnNYT} solved on NYT`, 'success');
       }
 
       // Phase 3: Import puzzles
