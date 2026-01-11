@@ -60,16 +60,16 @@ export default async function handler(req, res) {
       const archiveAnswer = answerLookup[key];
 
       if (archiveAnswer) {
-        // Only update if answer was empty or incomplete
+        // Only update if answer is missing or incomplete
         const currentAnswer = clue.answer || '';
-        const pattern = clue.pattern || '';
-        const isIncomplete = currentAnswer.length !== pattern.length;
+        const hasCompleteAnswer = currentAnswer.length > 0 && currentAnswer.length === archiveAnswer.length;
 
-        if (isIncomplete) {
+        if (!hasCompleteAnswer) {
           updatedCount++;
           return {
             ...clue,
-            answer: archiveAnswer.toUpperCase()
+            answer: archiveAnswer.toUpperCase(),
+            pattern: archiveAnswer.toUpperCase() // Also set pattern if missing
           };
         } else {
           skippedCount++;
