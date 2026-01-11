@@ -566,14 +566,28 @@
 
   async function scanAndImportPage(ui, existingSet) {
     const puzzles = scanCurrentPage(ui);
-    const solved = puzzles.filter(p => p.solved).length;
-    const inSystem = puzzles.filter(p => existingSet.has(p.date)).length;
-    const unsolved = puzzles.filter(p => !p.solved && !existingSet.has(p.date));
+
+    // Categorize puzzles and log each one
+    const toImport = [];
+    let solved = 0;
+    let alreadyInSystem = 0;
+
+    for (const puzzle of puzzles) {
+      if (puzzle.solved) {
+        solved++;
+        ui.log(`  ${puzzle.date}: skipped (solved on NYT)`, 'info');
+      } else if (existingSet.has(puzzle.date)) {
+        alreadyInSystem++;
+        ui.log(`  ${puzzle.date}: skipped (already imported)`, 'info');
+      } else {
+        toImport.push(puzzle);
+      }
+    }
 
     let imported = 0;
     let failed = 0;
 
-    for (const puzzle of unsolved) {
+    for (const puzzle of toImport) {
       if (isPaused) {
         break;
       }
@@ -595,7 +609,7 @@
       await delay(DELAY_BETWEEN_PUZZLES);
     }
 
-    return { total: puzzles.length, solved, inSystem, imported, failed };
+    return { total: puzzles.length, solved, inSystem: alreadyInSystem, imported, failed };
   }
 
   async function startCrawler(singlePageOnly = false) {
