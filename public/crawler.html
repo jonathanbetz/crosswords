@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NYT Archive Crawler - Crossword Trainer</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+      color: #333;
+      line-height: 1.6;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+    }
+    h1 {
+      margin: 0;
+    }
+    .nav-links {
+      display: flex;
+      gap: 16px;
+    }
+    .nav-link {
+      color: #007bff;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .nav-link:hover {
+      text-decoration: underline;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h2 {
+      margin-top: 0;
+      color: #333;
+    }
+    .bookmarklet {
+      display: inline-block;
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #007bff, #0056b3);
+      color: white;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 16px;
+      cursor: grab;
+      box-shadow: 0 4px 12px rgba(0,123,255,0.3);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .bookmarklet:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0,123,255,0.4);
+    }
+    .bookmarklet:active {
+      cursor: grabbing;
+    }
+    .steps {
+      counter-reset: step-counter;
+      padding-left: 0;
+    }
+    .steps li {
+      counter-increment: step-counter;
+      list-style: none;
+      position: relative;
+      padding-left: 50px;
+      margin-bottom: 20px;
+    }
+    .steps li::before {
+      content: counter(step-counter);
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 32px;
+      height: 32px;
+      background: #007bff;
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+    }
+    code {
+      background: #f4f4f4;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .warning {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 8px;
+      padding: 16px;
+      margin: 20px 0;
+    }
+    .warning-title {
+      font-weight: 600;
+      color: #856404;
+      margin-bottom: 8px;
+    }
+    .info {
+      background: #d1ecf1;
+      border: 1px solid #17a2b8;
+      border-radius: 8px;
+      padding: 16px;
+      margin: 20px 0;
+    }
+    .info-title {
+      font-weight: 600;
+      color: #0c5460;
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>NYT Archive Crawler</h1>
+    <div class="nav-links">
+      <a href="/" class="nav-link">Clues</a>
+      <a href="/puzzles.html" class="nav-link">Puzzles</a>
+      <a href="/recommendations.html" class="nav-link">Recs</a>
+      <a href="/quiz.html" class="nav-link">Quiz</a>
+    </div>
+  </header>
+
+  <div class="card">
+    <h2>What This Does</h2>
+    <p>This tool crawls your NYT crossword archive to find puzzles you haven't solved yet, and imports them into the training system so you can practice with their clues.</p>
+    <p>It runs entirely in your browser using your NYT subscription - no credentials are stored on our servers.</p>
+  </div>
+
+  <div class="card">
+    <h2>Step 1: Add the Bookmarklet</h2>
+    <p>Drag this button to your bookmarks bar:</p>
+    <p style="text-align: center; margin: 24px 0;">
+      <a class="bookmarklet" href="javascript:(function(){var s=document.createElement('script');s.src='https://crosswords-ten.vercel.app/crawler.js?t='+Date.now();document.body.appendChild(s);})();">Import NYT Puzzles</a>
+    </p>
+    <p><small>If you can't see your bookmarks bar, press <code>Cmd+Shift+B</code> (Mac) or <code>Ctrl+Shift+B</code> (Windows).</small></p>
+  </div>
+
+  <div class="card">
+    <h2>Step 2: Run the Crawler</h2>
+    <ol class="steps">
+      <li>
+        <strong>Go to the NYT Crossword Archive</strong><br>
+        Open <a href="https://www.nytimes.com/crosswords/archive/daily" target="_blank">nytimes.com/crosswords/archive/daily</a> and make sure you're logged in.
+      </li>
+      <li>
+        <strong>Click the bookmarklet</strong><br>
+        Click "Import NYT Puzzles" in your bookmarks bar. A panel will appear in the corner of the page.
+      </li>
+      <li>
+        <strong>Wait for import to complete</strong><br>
+        The crawler will scan your archive, find unsolved puzzles, and import them. This takes about 7-8 minutes for ~300 puzzles.
+      </li>
+      <li>
+        <strong>Check your puzzles</strong><br>
+        Once done, go to <a href="/puzzles.html">Puzzles</a> to see all imported puzzles.
+      </li>
+    </ol>
+  </div>
+
+  <div class="warning">
+    <div class="warning-title">Important Notes</div>
+    <ul style="margin: 0; padding-left: 20px;">
+      <li>You must be logged into your NYT account with an active crossword subscription</li>
+      <li>Keep the browser tab open while the crawler runs</li>
+      <li>If interrupted, you can run it again - it will resume where it left off</li>
+      <li>The crawler only imports puzzles you haven't solved on NYT</li>
+    </ul>
+  </div>
+
+  <div class="info">
+    <div class="info-title">Privacy</div>
+    <p style="margin: 0;">The crawler runs entirely in your browser. Your NYT credentials are never sent to our servers - we only receive the puzzle data (clues and answers).</p>
+  </div>
+
+  <script>
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.key.toLowerCase() === 'q') window.location.href = '/quiz.html';
+      if (e.key.toLowerCase() === 'p') window.location.href = '/puzzles.html';
+      if (e.key.toLowerCase() === 'r') window.location.href = '/recommendations.html';
+    });
+  </script>
+</body>
+</html>
