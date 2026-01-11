@@ -464,8 +464,16 @@
     const svgCells = doc.querySelectorAll('g[data-group="cells"] g.xwd__cell');
     if (svgCells.length === 0) return grid;
 
+    // Dynamically detect cell size from the first rect's width
+    // (15x15 puzzles use ~33px cells, 21x21 Sunday puzzles use ~23px cells)
+    let cellSize = 33;
+    const firstRect = doc.querySelector('g[data-group="cells"] g.xwd__cell rect');
+    if (firstRect) {
+      const width = parseFloat(firstRect.getAttribute('width') || '33');
+      cellSize = width;
+    }
+
     const cellData = [];
-    const cellSize = 33;
 
     svgCells.forEach(cell => {
       const rect = cell.querySelector('rect');
@@ -473,8 +481,10 @@
 
       const x = parseFloat(rect.getAttribute('x') || '0');
       const y = parseFloat(rect.getAttribute('y') || '0');
-      const col = Math.round((x - 3) / cellSize);
-      const row = Math.round((y - 3) / cellSize);
+      // Use the first cell's position as the offset (instead of hardcoded 3)
+      const offset = parseFloat(firstRect.getAttribute('x') || '3');
+      const col = Math.round((x - offset) / cellSize);
+      const row = Math.round((y - offset) / cellSize);
       const isBlack = rect.classList.contains('xwd__cell--block');
 
       let cellNumber = null;
