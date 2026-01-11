@@ -52,9 +52,12 @@ async function recordAttempt(req, res) {
 
     // On correct answer (all letters right): next attempt gets (hints used - 1)
     // allCorrect means all letters were correct, even if hints were used
-    // On incorrect: no change to hints available
+    // On incorrect: increment hints by 1
     if (allCorrect && typeof hintsUsed === 'number') {
       hintsAvailable = Math.max(0, hintsUsed - 1);
+      await kv.set(hintsKey, hintsAvailable);
+    } else if (allCorrect === false && hintsAvailable !== null) {
+      hintsAvailable = hintsAvailable + 1;
       await kv.set(hintsKey, hintsAvailable);
     }
 
