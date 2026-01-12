@@ -1240,39 +1240,22 @@
       if (submitted) return;
 
       const inputs = document.querySelectorAll('.letter-input');
-      let targetIdx = -1;
 
-      // Priority 1: Find first blank square
+      // Single pass left-to-right: find first character that is:
+      // - blank, OR
+      // - filled but not checked, OR
+      // - checked but incorrect
       for (let i = 0; i < inputs.length; i++) {
-        if (!inputs[i].value) {
-          targetIdx = i;
-          break;
+        const input = inputs[i];
+        const isBlank = !input.value;
+        const isFilledUnchecked = input.value && !hintCheckedLetters[i];
+        const isIncorrect = input.classList.contains('hint-incorrect');
+
+        if (isBlank || isFilledUnchecked || isIncorrect) {
+          useHintForSquare(i);
+          return;
         }
       }
-
-      // Priority 2: Find first filled but unchecked square
-      if (targetIdx === -1) {
-        for (let i = 0; i < inputs.length; i++) {
-          if (inputs[i].value && !hintCheckedLetters[i]) {
-            targetIdx = i;
-            break;
-          }
-        }
-      }
-
-      // Priority 3: Find first checked but incorrect square
-      if (targetIdx === -1) {
-        for (let i = 0; i < inputs.length; i++) {
-          if (inputs[i].classList.contains('hint-incorrect')) {
-            targetIdx = i;
-            break;
-          }
-        }
-      }
-
-      if (targetIdx === -1) return; // All done
-
-      useHintForSquare(targetIdx);
     }
 
     async function checkAnswer() {
