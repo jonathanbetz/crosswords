@@ -116,49 +116,10 @@ async function handleIncrementalSync(req, res, sinceTimestamp, showCompletedPuzz
       return acc;
     }, []);
 
-  // Check for new/updated puzzles
-  const dates = await kv.smembers('puzzle:dates');
-  const clues = [];
-
-  if (dates && dates.length > 0) {
-    for (const date of dates) {
-      const key = `puzzle:${date}`;
-      const record = await kv.get(key);
-
-      if (!record || !record.clues) continue;
-
-      // Skip puzzles marked as complete unless includeCompleted is true
-      if (record.markedComplete && !showCompletedPuzzles) continue;
-
-      // Check if puzzle was updated since last sync
-      const puzzleUpdatedAt = record.updatedAt ? new Date(record.updatedAt).getTime() : 0;
-      if (puzzleUpdatedAt <= sinceTimestamp) continue;
-
-      // Puzzle was updated - include its clues
-      for (const clue of record.clues) {
-        if (clue.ignored) continue;
-        if (!clue.answer || !clue.pattern || clue.answer.length !== clue.pattern.length) continue;
-
-        const clueId = `${clue.direction}-${clue.number}`;
-        const statsKey = `quiz:${date}:${clueId}`;
-        const attempts = await kv.get(statsKey) || [];
-
-        clues.push({
-          text: clue.text,
-          pattern: clue.pattern,
-          answer: clue.answer,
-          number: clue.number,
-          direction: clue.direction,
-          puzzleDate: date,
-          attempts: attempts,
-          puzzleComplete: record.markedComplete || false
-        });
-      }
-    }
-  }
-
+  // For incremental sync, skip puzzle iteration - it's slow and puzzles rarely change
+  // New puzzles will be picked up on next full sync (when SYNC_INTERVAL expires)
   return res.status(200).json({
-    clues,
+    clues: [],
     newAttempts,
     fetchedAt: Date.now(),
     isIncremental: true
