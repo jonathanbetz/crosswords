@@ -110,6 +110,38 @@ export default async function handler(req, res) {
   }
 }
 
+// Expand pattern for rebus clues where answer is longer than pattern
+// Preserves known letters at their positions from the end
+function expandPatternForRebus(pattern, answer) {
+  if (!answer || !pattern || answer.length <= pattern.length) {
+    return pattern;
+  }
+
+  // Find known letters and their positions from the END of the pattern
+  const knownFromEnd = [];
+  for (let i = 0; i < pattern.length; i++) {
+    if (pattern[i] !== '_') {
+      knownFromEnd.push({
+        char: pattern[i],
+        distFromEnd: pattern.length - 1 - i
+      });
+    }
+  }
+
+  // Build new pattern of answer length
+  const result = new Array(answer.length).fill('_');
+
+  // Place known letters at the same distance from the end
+  for (const { char, distFromEnd } of knownFromEnd) {
+    const newIdx = answer.length - 1 - distFromEnd;
+    if (newIdx >= 0) {
+      result[newIdx] = char;
+    }
+  }
+
+  return result.join('');
+}
+
 function buildAnswerLookup(archiveData) {
   const lookup = {};
   const { clues: rawClues, answers } = archiveData;
@@ -191,12 +223,17 @@ async function handleBulkImport(req, res) {
       }
 
       // pattern = current state from puzzle (with underscores for unfilled)
-      const pattern = clue.pattern || '';
+      let pattern = clue.pattern || '';
 
       // Get correct answer from GitHub archive
       const clueKey = `${direction}-${clue.number}`;
       const archiveAnswer = answerLookup[clueKey];
       const answer = archiveAnswer ? archiveAnswer.toUpperCase() : null;
+
+      // Expand pattern for rebus clues where answer is longer than pattern
+      if (answer && pattern && answer.length > pattern.length) {
+        pattern = expandPatternForRebus(pattern, answer);
+      }
 
       validatedClues.push({
         number: parseInt(clue.number, 10),
