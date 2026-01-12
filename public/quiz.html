@@ -394,6 +394,7 @@
       <a href="/quiz.html" class="nav-link">Quiz</a>
       <a href="/performance.html" class="nav-link">Performance</a>
       <a href="/learning.html" class="nav-link">Learning</a>
+      <a href="#" class="nav-link" onclick="clearCache(); return false;" style="color: #dc3545;">Clear Cache</a>
     </div>
   </header>
 
@@ -1466,6 +1467,37 @@
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    // === CACHE MANAGEMENT ===
+    async function clearCache() {
+      if (!confirm('Clear all cached quiz data? This will remove locally stored clues and attempt history.')) {
+        return;
+      }
+
+      try {
+        // Close existing connection
+        if (db) {
+          db.close();
+          db = null;
+        }
+
+        // Delete the database
+        await new Promise((resolve, reject) => {
+          const request = indexedDB.deleteDatabase(DB_NAME);
+          request.onsuccess = () => resolve();
+          request.onerror = () => reject(request.error);
+        });
+
+        // Clear sync metadata from localStorage
+        localStorage.removeItem('longestStreak');
+
+        alert('Cache cleared. Page will reload.');
+        window.location.reload();
+      } catch (err) {
+        console.error('Failed to clear cache:', err);
+        alert('Failed to clear cache: ' + err.message);
+      }
     }
 
     // === INITIALIZATION ===
