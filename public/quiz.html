@@ -1565,7 +1565,20 @@
         // Update status
         updateStatusIndicator(isOnline ? 'online' : 'offline');
 
-        // If online, sync from server first (force full sync to get latest puzzle completion status)
+        // Check if we have local data
+        const localClues = await getAllClues();
+        const hasLocalData = localClues.length > 0;
+
+        if (hasLocalData) {
+          // Load clue immediately from cache, sync in background
+          await loadClue();
+          if (isOnline) {
+            syncFromServer(false).then(() => syncPendingAttempts());
+          }
+          return;
+        }
+
+        // No local data - must sync first
         if (isOnline) {
           await syncFromServer(true);
           await syncPendingAttempts();
