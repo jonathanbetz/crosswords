@@ -223,6 +223,13 @@
       color: #666;
       cursor: not-allowed;
     }
+    .pause-btn {
+      background: #fd7e14;
+      color: white;
+    }
+    .pause-btn:hover {
+      background: #e86a0a;
+    }
     .result {
       text-align: center;
       padding: 16px;
@@ -428,6 +435,8 @@
     let isOnline = navigator.onLine;
     let db = null;
     let syncInProgress = false;
+    let autoAdvanceTimeout = null;
+    let autoAdvancePaused = false;
 
     // === INDEXEDDB ===
     function openDatabase() {
@@ -1349,7 +1358,8 @@
 
       document.getElementById('submitBtn').outerHTML =
         '<button class="next-btn" onclick="loadClue()">Next Clue</button>';
-      document.getElementById('hintBtn').style.display = 'none';
+      document.getElementById('hintBtn').outerHTML =
+        '<button class="pause-btn" id="pauseBtn" onclick="togglePause()">Pause</button>';
 
       updateStats();
 
@@ -1359,6 +1369,32 @@
       // Pass both: countAsCorrect (for stats) and allCorrect (for hint updates)
       const stats = await recordAttempt(clueKey, countAsCorrect, answerLength, hintsUsedThisClue, allCorrect);
       displayClueStats(stats);
+
+      // Auto-advance after 1 second
+      autoAdvancePaused = false;
+      autoAdvanceTimeout = setTimeout(() => {
+        if (!autoAdvancePaused) {
+          loadClue();
+        }
+      }, 1000);
+    }
+
+    function togglePause() {
+      autoAdvancePaused = !autoAdvancePaused;
+      const pauseBtn = document.getElementById('pauseBtn');
+      if (pauseBtn) {
+        if (autoAdvancePaused) {
+          pauseBtn.textContent = 'Resume';
+          pauseBtn.classList.remove('pause-btn');
+          pauseBtn.classList.add('next-btn');
+          if (autoAdvanceTimeout) {
+            clearTimeout(autoAdvanceTimeout);
+            autoAdvanceTimeout = null;
+          }
+        } else {
+          loadClue();
+        }
+      }
     }
 
     async function skipClue() {
