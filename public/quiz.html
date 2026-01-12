@@ -1173,6 +1173,7 @@
         input.value = correctChar;
         input.classList.remove('hint-incorrect', 'empty', 'user-entered', 'from-pattern');
         input.classList.add('hint-correct');
+        input.readOnly = true;
         focusNextUncheckedInput(targetIdx);
       } else if (!userChar) {
         // Case 1: Blank - fill in correct letter (2 hints)
@@ -1181,6 +1182,7 @@
         input.value = correctChar;
         input.classList.remove('empty', 'user-entered', 'from-pattern');
         input.classList.add('hint-correct');
+        input.readOnly = true;
         focusNextUncheckedInput(targetIdx);
       } else if (!isAlreadyChecked) {
         // Case 2: Filled in but not checked - mark correct/incorrect (1 hint)
@@ -1189,11 +1191,13 @@
         if (userChar === correctChar) {
           input.classList.remove('empty', 'user-entered', 'from-pattern');
           input.classList.add('hint-correct');
+          input.readOnly = true;
+          focusNextUncheckedInput(targetIdx);
         } else {
           input.classList.remove('empty', 'user-entered', 'from-pattern');
           input.classList.add('hint-incorrect');
+          input.focus();
         }
-        input.focus();
       } else {
         // Already checked and correct - no action needed
         return;
