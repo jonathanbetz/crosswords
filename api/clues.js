@@ -84,7 +84,7 @@ async function getClues(req, res) {
       return res.status(200).json({ ...record, clues: cluesWithStats });
     } else {
       // Get list of all saved puzzle dates with summary stats
-      const dates = await kv.smembers('puzzle:dates');
+      const dates = await kv.smembers('puzzle:dates') || [];
       const sortedDates = dates.sort().reverse();
 
       // Fetch summary info for each puzzle

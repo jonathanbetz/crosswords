@@ -32,9 +32,9 @@ export default async function handler(req, res) {
     const showCompletedPuzzles = includeCompleted === 'true';
 
     // Get all puzzle dates
-    const dates = await kv.smembers('puzzle:dates');
+    const dates = await kv.smembers('puzzle:dates') || [];
 
-    if (!dates || dates.length === 0) {
+    if (dates.length === 0) {
       return res.status(200).json({ clues: [] });
     }
 
