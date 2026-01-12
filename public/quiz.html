@@ -1358,8 +1358,12 @@
 
       document.getElementById('submitBtn').outerHTML =
         '<button class="next-btn" onclick="loadClue()">Next Clue</button>';
-      document.getElementById('hintBtn').outerHTML =
-        '<button class="pause-btn" id="pauseBtn" onclick="togglePause()">Pause</button>';
+      if (allCorrect) {
+        document.getElementById('hintBtn').outerHTML =
+          '<button class="pause-btn" id="pauseBtn" onclick="togglePause()">Pause</button>';
+      } else {
+        document.getElementById('hintBtn').style.display = 'none';
+      }
 
       updateStats();
 
@@ -1370,13 +1374,15 @@
       const stats = await recordAttempt(clueKey, countAsCorrect, answerLength, hintsUsedThisClue, allCorrect);
       displayClueStats(stats);
 
-      // Auto-advance after 1 second
-      autoAdvancePaused = false;
-      autoAdvanceTimeout = setTimeout(() => {
-        if (!autoAdvancePaused) {
-          loadClue();
-        }
-      }, 1000);
+      // Auto-advance after 1 second (only if correct)
+      if (allCorrect) {
+        autoAdvancePaused = false;
+        autoAdvanceTimeout = setTimeout(() => {
+          if (!autoAdvancePaused) {
+            loadClue();
+          }
+        }, 1000);
+      }
     }
 
     function togglePause() {
