@@ -949,6 +949,13 @@
 
     // === QUIZ FUNCTIONS ===
     async function loadClue() {
+      // Clear any pending auto-advance
+      if (autoAdvanceTimeout) {
+        clearTimeout(autoAdvanceTimeout);
+        autoAdvanceTimeout = null;
+      }
+      autoAdvancePaused = false;
+
       const container = document.getElementById('quiz');
       container.innerHTML = '<div class="loading">Loading clue...</div>';
       submitted = false;
