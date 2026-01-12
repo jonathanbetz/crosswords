@@ -1150,7 +1150,6 @@
     function useHintForSquare(targetIdx) {
       if (submitted) return;
 
-      // Check if hints available
       const hintsCountEl = document.getElementById('hintsCount');
       let hintsRemaining = parseInt(hintsCountEl?.textContent || '0');
       if (hintsRemaining <= 0) return;
@@ -1161,15 +1160,50 @@
       const correctChar = answer[targetIdx];
       const userChar = input.value.toUpperCase();
       const isAlreadyIncorrect = input.classList.contains('hint-incorrect');
+      const isAlreadyChecked = hintCheckedLetters[targetIdx];
 
       // Mark that hint was used
       hintUsed = true;
-      hintsUsedThisClue++;
 
-      // Decrement hints display
-      hintsRemaining--;
+      let hintCost = 1;
+
+      if (isAlreadyIncorrect) {
+        // Case 3: Checked but incorrect - fill in correct letter (1 hint)
+        hintCost = 1;
+        input.value = correctChar;
+        input.classList.remove('hint-incorrect', 'empty', 'user-entered', 'from-pattern');
+        input.classList.add('hint-correct');
+        focusNextUncheckedInput(targetIdx);
+      } else if (!userChar) {
+        // Case 1: Blank - fill in correct letter (2 hints)
+        hintCost = 2;
+        hintCheckedLetters[targetIdx] = true;
+        input.value = correctChar;
+        input.classList.remove('empty', 'user-entered', 'from-pattern');
+        input.classList.add('hint-correct');
+        focusNextUncheckedInput(targetIdx);
+      } else if (!isAlreadyChecked) {
+        // Case 2: Filled in but not checked - mark correct/incorrect (1 hint)
+        hintCost = 1;
+        hintCheckedLetters[targetIdx] = true;
+        if (userChar === correctChar) {
+          input.classList.remove('empty', 'user-entered', 'from-pattern');
+          input.classList.add('hint-correct');
+        } else {
+          input.classList.remove('empty', 'user-entered', 'from-pattern');
+          input.classList.add('hint-incorrect');
+        }
+        input.focus();
+      } else {
+        // Already checked and correct - no action needed
+        return;
+      }
+
+      // Deduct hints
+      hintsUsedThisClue += hintCost;
+      hintsRemaining -= hintCost;
       if (hintsCountEl) {
-        hintsCountEl.textContent = hintsRemaining;
+        hintsCountEl.textContent = Math.max(0, hintsRemaining);
         hintsCountEl.classList.toggle('zero', hintsRemaining <= 0);
       }
 
@@ -1177,38 +1211,6 @@
       const hintBtn = document.getElementById('hintBtn');
       if (hintBtn && hintsRemaining <= 0) {
         hintBtn.disabled = true;
-      }
-
-      // If already marked incorrect (red), replace with correct letter
-      if (isAlreadyIncorrect) {
-        input.value = correctChar;
-        input.classList.remove('hint-incorrect', 'empty', 'user-entered', 'from-pattern');
-        input.classList.add('hint-correct');
-        // Move to next unchecked letter
-        focusNextUncheckedInput(targetIdx);
-        return;
-      }
-
-      // Mark this letter as checked
-      hintCheckedLetters[targetIdx] = true;
-
-      // Check if user's answer is correct
-      if (userChar === correctChar) {
-        // Correct - mark green
-        input.classList.remove('empty', 'user-entered', 'from-pattern');
-        input.classList.add('hint-correct');
-        input.focus();
-      } else if (!userChar) {
-        // Empty - fill in correct letter
-        input.value = correctChar;
-        input.classList.remove('empty', 'user-entered', 'from-pattern');
-        input.classList.add('hint-correct');
-        focusNextUncheckedInput(targetIdx);
-      } else {
-        // Incorrect - mark red
-        input.classList.remove('empty', 'user-entered', 'from-pattern');
-        input.classList.add('hint-incorrect');
-        input.focus();
       }
     }
 
@@ -1234,22 +1236,27 @@
       if (submitted) return;
 
       const inputs = document.querySelectorAll('.letter-input');
-      const answer = currentClue.answer.toUpperCase();
-
-      // Find the first letter that:
-      // 1. Hasn't been checked yet, OR
-      // 2. Is currently marked incorrect (red)
       let targetIdx = -1;
 
-      // First, look for unchecked letters
+      // Priority 1: Find first blank square
       for (let i = 0; i < inputs.length; i++) {
-        if (!hintCheckedLetters[i]) {
+        if (!inputs[i].value) {
           targetIdx = i;
           break;
         }
       }
 
-      // If all letters have been checked, look for incorrect ones to reveal
+      // Priority 2: Find first filled but unchecked square
+      if (targetIdx === -1) {
+        for (let i = 0; i < inputs.length; i++) {
+          if (inputs[i].value && !hintCheckedLetters[i]) {
+            targetIdx = i;
+            break;
+          }
+        }
+      }
+
+      // Priority 3: Find first checked but incorrect square
       if (targetIdx === -1) {
         for (let i = 0; i < inputs.length; i++) {
           if (inputs[i].classList.contains('hint-incorrect')) {
@@ -1259,7 +1266,7 @@
         }
       }
 
-      if (targetIdx === -1) return; // All letters checked and correct
+      if (targetIdx === -1) return; // All done
 
       useHintForSquare(targetIdx);
     }
