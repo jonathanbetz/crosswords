@@ -282,13 +282,11 @@ async function handleDelete(req, res) {
 
     // Delete all puzzles
     if (date === 'all') {
-      const dates = await kv.smembers('puzzle:dates');
+      const dates = await kv.smembers('puzzle:dates') || [];
       let deleted = 0;
 
       for (const d of dates) {
         await kv.del(`puzzle:${d}`);
-        // Also delete quiz data for this puzzle
-        // Quiz keys are like quiz:YYYY-MM-DD:direction-number
         deleted++;
       }
 
