@@ -1073,6 +1073,9 @@
             const nextEmpty = findNextEmptyInput(idx);
             if (nextEmpty) nextEmpty.focus();
           }
+
+          // Auto-check if all filled and correct
+          checkAutoComplete();
         });
 
         input.addEventListener('keydown', (e) => {
@@ -1133,6 +1136,24 @@
         if (!inputs[i].value) return inputs[i];
       }
       return null;
+    }
+
+    function checkAutoComplete() {
+      if (submitted || !currentClue) return;
+
+      const inputs = document.querySelectorAll('.letter-input');
+      const answer = currentClue.answer.toUpperCase();
+
+      // Check if all filled and all correct
+      for (let i = 0; i < inputs.length; i++) {
+        const userChar = inputs[i].value.toUpperCase();
+        if (!userChar || userChar !== answer[i]) {
+          return; // Not complete or not correct
+        }
+      }
+
+      // All filled and correct - auto-submit
+      checkAnswer();
     }
 
     function findNextInput(currentIdx) {
