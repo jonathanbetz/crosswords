@@ -109,6 +109,6 @@ async function getClues(req, res) {
     }
   } catch (error) {
     console.error('Error getting clues:', error);
-    return res.status(500).json({ error: 'Failed to get clues' });
+    return res.status(500).json({ error: 'Failed to get clues', details: error.message });
   }
 }

@@ -325,6 +325,6 @@ async function handleDelete(req, res) {
     });
   } catch (error) {
     console.error('Error deleting puzzle:', error);
-    return res.status(500).json({ error: 'Failed to delete puzzle' });
+    return res.status(500).json({ error: 'Failed to delete puzzle', details: error.message });
   }
 }
