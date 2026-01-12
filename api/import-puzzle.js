@@ -140,6 +140,7 @@ function buildAnswerLookup(archiveData) {
 }
 
 // Bulk import: creates new puzzle records from crawler data
+// Automatically fetches correct answers from GitHub archive
 async function handleBulkImport(req, res) {
   try {
     const { puzzleDate, clues } = req.body;
@@ -160,6 +161,22 @@ async function handleBulkImport(req, res) {
       return res.status(409).json({ error: 'Puzzle already exists', puzzleDate });
     }
 
+    // Fetch correct answers from GitHub archive
+    const [year, month, day] = puzzleDate.split('-');
+    const githubUrl = `${GITHUB_BASE}/${year}/${month}/${day}.json`;
+    let answerLookup = {};
+
+    try {
+      const response = await fetch(githubUrl);
+      if (response.ok) {
+        const archiveData = await response.json();
+        answerLookup = buildAnswerLookup(archiveData);
+      }
+    } catch (e) {
+      // Continue without answers if GitHub fetch fails
+      console.log('GitHub fetch failed for', puzzleDate, e.message);
+    }
+
     // Validate clues - each must have required fields
     const validatedClues = [];
     for (const clue of clues) {
@@ -174,9 +191,12 @@ async function handleBulkImport(req, res) {
       }
 
       // pattern = current state from puzzle (with underscores for unfilled)
-      // answer = correct answer (null until imported from archive)
       const pattern = clue.pattern || '';
-      const answer = clue.answer ? clue.answer.toUpperCase() : null;
+
+      // Get correct answer from GitHub archive
+      const clueKey = `${direction}-${clue.number}`;
+      const archiveAnswer = answerLookup[clueKey];
+      const answer = archiveAnswer ? archiveAnswer.toUpperCase() : null;
 
       validatedClues.push({
         number: parseInt(clue.number, 10),
@@ -197,7 +217,8 @@ async function handleBulkImport(req, res) {
       puzzleDate,
       clues: validatedClues,
       savedAt: new Date().toISOString(),
-      importedFrom: 'nyt-crawler'
+      importedFrom: 'nyt-crawler',
+      answersImportedFrom: Object.keys(answerLookup).length > 0 ? 'github-archive' : null
     };
 
     await kv.set(key, record);
@@ -208,7 +229,8 @@ async function handleBulkImport(req, res) {
     return res.status(200).json({
       success: true,
       puzzleDate,
-      clueCount: validatedClues.length
+      clueCount: validatedClues.length,
+      answersImported: Object.keys(answerLookup).length > 0
     });
   } catch (error) {
     console.error('Error bulk importing puzzle:', error);
@@ -216,10 +238,34 @@ async function handleBulkImport(req, res) {
   }
 }
 
-// Delete a puzzle by date
+// Delete a puzzle by date, or all puzzles if date=all
 async function handleDelete(req, res) {
   try {
     const { date } = req.query;
+
+    // Delete all puzzles
+    if (date === 'all') {
+      const dates = await kv.smembers('puzzle:dates');
+      let deleted = 0;
+
+      for (const d of dates) {
+        await kv.del(`puzzle:${d}`);
+        // Also delete quiz data for this puzzle
+        // Quiz keys are like quiz:YYYY-MM-DD:direction-number
+        deleted++;
+      }
+
+      // Clear the dates set
+      if (dates.length > 0) {
+        await kv.del('puzzle:dates');
+      }
+
+      return res.status(200).json({
+        success: true,
+        deleted: deleted,
+        message: 'All puzzles deleted'
+      });
+    }
 
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' });
