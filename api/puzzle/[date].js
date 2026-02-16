@@ -1,21 +1,10 @@
 import { kv } from '@vercel/kv';
+import { apiHandler } from '../utils/api-handler.js';
 
-export default async function handler(req, res) {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+export default apiHandler({ PATCH: updatePuzzle });
 
-  const { date } = req.query;
-
-  if (req.method === 'PATCH') {
-    return updatePuzzle(req, res, date);
-  }
-
-  return res.status(405).json({ error: 'Method not allowed' });
-}
-
-async function updatePuzzle(req, res, puzzleDate) {
+async function updatePuzzle(req, res) {
+  const puzzleDate = req.query.date;
   try {
     const { markedComplete } = req.body;
 

@@ -1,19 +1,7 @@
 import { kv } from '@vercel/kv';
+import { apiHandler } from './utils/api-handler.js';
 
-export default async function handler(req, res) {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method === 'POST') {
-    return recordAttempt(req, res);
-  } else if (req.method === 'GET') {
-    return getStats(req, res);
-  }
-
-  return res.status(405).json({ error: 'Method not allowed' });
-}
+export default apiHandler({ GET: getStats, POST: recordAttempt });
 
 const RECENT_ATTEMPTS_KEY = 'quiz:recent-attempts';
 const RECENT_ATTEMPTS_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
