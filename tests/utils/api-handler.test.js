@@ -72,4 +72,17 @@ describe('apiHandler', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body).toEqual({ async: true });
   });
+
+  it('catches thrown errors and returns 500', async () => {
+    const errorHandler = vi.fn(async () => {
+      throw new Error('database connection failed');
+    });
+    const handler = apiHandler({ GET: errorHandler });
+    const { req, res } = mockReqRes('GET');
+
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: 'Internal server error' });
+  });
 });

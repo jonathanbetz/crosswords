@@ -7,6 +7,11 @@ export function apiHandler(methods) {
     if (!handler) {
       return res.status(405).json({ error: 'Method not allowed' });
     }
-    return handler(req, res);
+    try {
+      return await handler(req, res);
+    } catch (error) {
+      console.error('Unhandled error in API handler:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
   };
 }
