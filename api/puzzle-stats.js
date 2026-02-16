@@ -1,4 +1,5 @@
 import { kv } from '@vercel/kv';
+import { hasCompleteAnswer } from './utils/clue.js';
 
 export default async function handler(req, res) {
   // Handle CORS preflight
@@ -52,11 +53,7 @@ export default async function handler(req, res) {
         let weeklyCorrect = 0;
 
         for (const clue of activeClues) {
-          const pattern = clue.pattern || '';
-          const answer = clue.answer || '';
-          const hasCompleteAnswer = answer.length === pattern.length && answer.length > 0;
-
-          if (hasCompleteAnswer) {
+          if (hasCompleteAnswer(clue)) {
             complete++;
 
             // Only get quiz stats for clues with complete answers

@@ -1,5 +1,6 @@
 import { kv } from '@vercel/kv';
 import { calculateWilsonLower } from './utils/wilson-score.js';
+import { hasCompleteAnswer } from './utils/clue.js';
 
 // Calculate minimum interval before showing a clue again based on Wilson score
 // Higher Wilson score = longer interval (more confident it's learned)
@@ -94,8 +95,8 @@ export default async function handler(req, res) {
           // Skip ignored clues
           if (clue.ignored) continue;
 
-          // Only include clues with complete answers (answer length matches pattern length)
-          if (clue.answer && clue.pattern && clue.answer.length === clue.pattern.length) {
+          // Only include clues with complete answers
+          if (hasCompleteAnswer(clue)) {
             completedClues.push({
               ...clue,
               puzzleDate: date

@@ -1,5 +1,6 @@
 import { kv } from '@vercel/kv';
 import { calculateWilsonLower } from './utils/wilson-score.js';
+import { hasCompleteAnswer } from './utils/clue.js';
 
 export default async function handler(req, res) {
   // Handle CORS preflight
@@ -37,8 +38,7 @@ export default async function handler(req, res) {
           // Skip ignored clues
           if (clue.ignored) continue;
 
-          // Only include clues with complete answers
-          if (clue.answer && clue.pattern && clue.answer.length === clue.pattern.length) {
+          if (hasCompleteAnswer(clue)) {
             allClues.push({
               ...clue,
               puzzleDate: date,

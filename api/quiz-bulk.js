@@ -1,4 +1,5 @@
 import { kv } from '@vercel/kv';
+import { hasCompleteAnswer } from './utils/clue.js';
 
 const RECENT_ATTEMPTS_KEY = 'quiz:recent-attempts';
 
@@ -59,8 +60,7 @@ async function handleFullSync(req, res, showCompletedPuzzles) {
       // Skip ignored clues
       if (clue.ignored) continue;
 
-      // Only include clues with complete answers
-      if (!clue.answer || !clue.pattern || clue.answer.length !== clue.pattern.length) continue;
+      if (!hasCompleteAnswer(clue)) continue;
 
       const clueId = `${clue.direction}-${clue.number}`;
       const statsKey = `quiz:${date}:${clueId}`;
