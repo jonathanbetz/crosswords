@@ -1,19 +1,5 @@
 import { kv } from '@vercel/kv';
-
-// Calculate Wilson score lower bound
-function calculateWilsonLower(successes, total) {
-  if (total === 0) return 0;
-
-  const z = 1.96;
-  const p = successes / total;
-  const z2 = z * z;
-  const n = total;
-
-  const numerator = p + z2 / (2 * n) - z * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n);
-  const denominator = 1 + z2 / n;
-
-  return numerator / denominator;
-}
+import { calculateWilsonLower } from './utils/wilson-score.js';
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
