@@ -1,5 +1,6 @@
 import { kv } from '@vercel/kv';
 import { calculateWilsonLower } from './utils/wilson-score.js';
+import { hasCompleteAnswer } from './utils/clue.js';
 
 export default async function handler(req, res) {
   // Handle CORS preflight
@@ -47,13 +48,13 @@ export default async function handler(req, res) {
         totalSquares += answerLength;
 
         // If no complete answer, treat as 0% solvable (can't quiz on it)
-        const hasCompleteAnswer = clue.answer && clue.answer.length === clue.pattern.length;
+        const complete = hasCompleteAnswer(clue);
 
         let wilsonScore = 0;
         let total = 0;
         let correct = 0;
 
-        if (hasCompleteAnswer) {
+        if (complete) {
           answeredClueCount++;
           const clueId = `${clue.direction}-${clue.number}`;
           const statsKey = `quiz:${date}:${clueId}`;
@@ -72,12 +73,12 @@ export default async function handler(req, res) {
           number: clue.number,
           direction: clue.direction,
           text: clue.text,
-          answer: hasCompleteAnswer ? clue.answer : null,
+          answer: complete ? clue.answer : null,
           pattern: clue.pattern ? clue.pattern.replace(/_/g, '?') : null,
           length: answerLength,
           wilsonScore: Math.round(wilsonScore * 100) / 100,
           attempts: total,
-          hasAnswer: hasCompleteAnswer
+          hasAnswer: complete
         });
       }
 

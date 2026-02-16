@@ -1,4 +1,5 @@
 import { kv } from '@vercel/kv';
+import { hasCompleteAnswer } from './utils/clue.js';
 
 export default async function handler(req, res) {
   // Handle CORS preflight
@@ -37,10 +38,8 @@ export default async function handler(req, res) {
           // Skip ignored clues
           if (clue.ignored) continue;
 
-          const hasCompleteAnswer = clue.answer && clue.pattern && clue.answer.length === clue.pattern.length;
-
           // Include all clues if showAll, otherwise only incomplete ones
-          if (showAll || !hasCompleteAnswer) {
+          if (showAll || !hasCompleteAnswer(clue)) {
             clues.push({
               ...clue,
               puzzleDate: date,

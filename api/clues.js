@@ -1,4 +1,5 @@
 import { kv } from '@vercel/kv';
+import { hasCompleteAnswer } from './utils/clue.js';
 
 export default async function handler(req, res) {
   // Handle CORS preflight
@@ -59,11 +60,7 @@ async function getClues(req, res) {
       // Fetch lifetime quiz stats for each clue (only for clues with complete answers)
       const cluesWithStats = await Promise.all(
         record.clues.map(async (clue) => {
-          const pattern = clue.pattern || '';
-          const answer = clue.answer || '';
-          const hasCompleteAnswer = answer.length === pattern.length && answer.length > 0;
-
-          if (!hasCompleteAnswer) {
+          if (!hasCompleteAnswer(clue)) {
             return { ...clue, quizStats: null };
           }
 
@@ -95,11 +92,7 @@ async function getClues(req, res) {
 
           const nonIgnoredClues = record.clues.filter(c => !c.ignored);
           const total = nonIgnoredClues.length;
-          const incomplete = nonIgnoredClues.filter(c => {
-            const pattern = c.pattern || '';
-            const answer = c.answer || '';
-            return answer.length !== pattern.length || answer.length === 0;
-          }).length;
+          const incomplete = nonIgnoredClues.filter(c => !hasCompleteAnswer(c)).length;
 
           return { date: d, total, incomplete, markedComplete: record.markedComplete || false };
         })

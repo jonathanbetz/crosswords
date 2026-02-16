@@ -1,5 +1,6 @@
 import { kv } from '@vercel/kv';
 import { calculateWilsonLower } from './utils/wilson-score.js';
+import { hasCompleteAnswer } from './utils/clue.js';
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -41,7 +42,7 @@ export default async function handler(req, res) {
 
       for (const clue of record.clues) {
         if (clue.ignored) continue;
-        if (!clue.answer || clue.answer.length !== clue.pattern?.length) continue;
+        if (!hasCompleteAnswer(clue)) continue;
 
         const clueId = `${clue.direction}-${clue.number}`;
         const statsKey = `quiz:${date}:${clueId}`;
