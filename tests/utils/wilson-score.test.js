@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateWilsonLower } from '../wilson-score.js';
+import { calculateWilsonLower } from '../../api/utils/wilson-score.js';
 
 describe('calculateWilsonLower', () => {
   it('returns 0 when total is 0', () => {
