@@ -1,6 +1,7 @@
 import { kv } from '@vercel/kv';
 import { calculateWilsonLower } from './utils/wilson-score.js';
 import { hasCompleteAnswer } from './utils/clue.js';
+import { apiHandler } from './utils/api-handler.js';
 
 // Calculate minimum interval before showing a clue again based on Wilson score
 // Higher Wilson score = longer interval (more confident it's learned)
@@ -59,16 +60,9 @@ function calculatePriority(wilsonLower, total, lastAttemptTime, now) {
   return wilsonLower - overduePenalty;
 }
 
-export default async function handler(req, res) {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+export default apiHandler({ GET: getQuiz });
 
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
+async function getQuiz(req, res) {
   try {
     const { includeCompleted } = req.query;
     const showCompletedPuzzles = includeCompleted === 'true';

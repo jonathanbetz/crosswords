@@ -1,18 +1,12 @@
 import { kv } from '@vercel/kv';
 import { hasCompleteAnswer } from './utils/clue.js';
+import { apiHandler } from './utils/api-handler.js';
 
 const RECENT_ATTEMPTS_KEY = 'quiz:recent-attempts';
 
-export default async function handler(req, res) {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+export default apiHandler({ GET: getQuizBulk });
 
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
+async function getQuizBulk(req, res) {
   try {
     const { includeCompleted, since } = req.query;
     const showCompletedPuzzles = includeCompleted === 'true';

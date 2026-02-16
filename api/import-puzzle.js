@@ -1,22 +1,11 @@
 import { kv } from '@vercel/kv';
+import { apiHandler } from './utils/api-handler.js';
 
 const GITHUB_BASE = 'https://raw.githubusercontent.com/doshea/nyt_crosswords/master';
 
-export default async function handler(req, res) {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+export default apiHandler({ POST: handlePost, DELETE: handleDelete });
 
-  // DELETE: remove a puzzle
-  if (req.method === 'DELETE') {
-    return handleDelete(req, res);
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
+async function handlePost(req, res) {
   // Check for bulk import action (creates new puzzle records)
   const { action } = req.query;
   if (action === 'bulk') {

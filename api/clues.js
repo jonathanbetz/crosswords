@@ -1,20 +1,8 @@
 import { kv } from '@vercel/kv';
 import { hasCompleteAnswer } from './utils/clue.js';
+import { apiHandler } from './utils/api-handler.js';
 
-export default async function handler(req, res) {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method === 'POST') {
-    return saveClues(req, res);
-  } else if (req.method === 'GET') {
-    return getClues(req, res);
-  }
-
-  return res.status(405).json({ error: 'Method not allowed' });
-}
+export default apiHandler({ GET: getClues, POST: saveClues });
 
 async function saveClues(req, res) {
   try {
