@@ -101,7 +101,7 @@ async function handlePost(req, res) {
 
 // Expand pattern for rebus clues where answer is longer than pattern
 // Preserves known letters at their positions from the end
-function expandPatternForRebus(pattern, answer) {
+export function expandPatternForRebus(pattern, answer) {
   if (!answer || !pattern || answer.length <= pattern.length) {
     return pattern;
   }
@@ -131,7 +131,7 @@ function expandPatternForRebus(pattern, answer) {
   return result.join('');
 }
 
-function buildAnswerLookup(archiveData) {
+export function buildAnswerLookup(archiveData) {
   const lookup = {};
   const { clues: rawClues, answers } = archiveData;
 
