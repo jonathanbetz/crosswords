@@ -256,10 +256,9 @@
 
       const date = `${match[1]}-${match[2]}-${match[3]}`;
 
-      // Check if puzzle is solved by looking for star classes
+      // Check if puzzle is solved by looking for star classes or aria indicators
       // puzzleProgressGoldStar = solved with streak
       // puzzleProgressBlueStar = solved without streak
-      // puzzleProgress4, puzzleProgress50, etc. = in progress (percentage)
       let isSolved = false;
 
       // Check for star classes inside the link
@@ -268,9 +267,17 @@
         isSolved = true;
       }
 
-      // Also check the parent calendar item container
+      // Fallback: check aria-label for "solved" indication (more stable than class names)
       if (!isSolved) {
-        const container = link.closest('.archive_calendar-item');
+        const ariaLabel = link.getAttribute('aria-label') || '';
+        if (/solved|completed|finished/i.test(ariaLabel)) {
+          isSolved = true;
+        }
+      }
+
+      // Also check the parent calendar item container — try multiple possible class names
+      if (!isSolved) {
+        const container = link.closest('.archive_calendar-item, [class*="calendar-item"], [class*="CalendarItem"]');
         if (container && container.querySelector('.puzzleProgressGoldStar, .puzzleProgressBlueStar')) {
           isSolved = true;
         }
@@ -288,6 +295,7 @@
     const monthSelect = document.querySelector('select[data-testid="month-selector"]');
 
     if (!yearSelect || !monthSelect) {
+      console.warn('[Crawler] Archive dropdowns not found — NYT may have changed their DOM structure');
       return [];
     }
 
