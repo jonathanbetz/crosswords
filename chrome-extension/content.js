@@ -54,10 +54,12 @@
   }
 
   function isNYTCrosswordPage() {
-    // Check for crossword game board elements
+    // Check for crossword game board elements — class names first, then stable data/aria attrs
     return document.querySelector('[class*="Cell-"]') !== null ||
-           document.querySelector('[class*="cell"]') !== null ||
-           document.querySelector('.xwd__cell') !== null;
+           document.querySelector('.xwd__cell') !== null ||
+           document.querySelector('[data-testid="cell"]') !== null ||
+           document.querySelector('[data-testid*="crossword"]') !== null ||
+           document.querySelector('[aria-label*="crossword" i]') !== null;
   }
 
   function extractPuzzleDate() {
@@ -84,25 +86,35 @@
       }
     };
 
-    // Try SVG-based grid first (newer NYT layout)
+    // Try SVG-based grid (current NYT layout uses xwd__cell with data-group="cells")
     const svgCells = document.querySelectorAll('g[data-group="cells"] g.xwd__cell');
     if (svgCells.length > 0) {
       console.log('[Crossword Trainer] Found', svgCells.length, 'SVG cells');
       return extractSVGGrid(grid, svgCells);
     }
 
+    // Try data-testid selectors (stable; NYT uses these for accessibility testing)
+    const testIdCells = document.querySelectorAll('[data-testid="cell"]');
+    if (testIdCells.length > 0) {
+      console.log('[Crossword Trainer] Found', testIdCells.length, 'cells via data-testid');
+      return extractGenericGrid(grid, testIdCells);
+    }
+
     // Try React-based grid
     const reactCells = document.querySelectorAll('[class*="Cell-block"], [class*="cell-block"]');
     if (reactCells.length > 0) {
+      console.log('[Crossword Trainer] Found', reactCells.length, 'React cells');
       return extractReactGrid(grid, reactCells);
     }
 
     // Fallback: try generic cell selectors
     const genericCells = document.querySelectorAll('[class*="Cell"], .xwd__cell');
     if (genericCells.length > 0) {
+      console.log('[Crossword Trainer] Found', genericCells.length, 'generic cells');
       return extractGenericGrid(grid, genericCells);
     }
 
+    console.warn('[Crossword Trainer] No grid cells found — NYT may have changed their DOM structure');
     return grid;
   }
 
@@ -386,6 +398,12 @@
     // Alternative parsing: Look for clue containers with labels
     if (across.length === 0 && down.length === 0) {
       parseCluesByAriaLabels(across, down);
+    }
+
+    if (across.length === 0 && down.length === 0) {
+      console.warn('[Crossword Trainer] No clues found — NYT may have changed their DOM structure');
+    } else {
+      console.log(`[Crossword Trainer] Extracted ${across.length} across, ${down.length} down clues`);
     }
 
     return { across, down };
