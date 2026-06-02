@@ -3,6 +3,8 @@ import { calculateWilsonLower } from './utils/wilson-score.js';
 import { hasCompleteAnswer } from './utils/clue.js';
 import { apiHandler } from './utils/api-handler.js';
 
+const TOP_CANDIDATES_COUNT = 5;
+
 // Calculate minimum interval before showing a clue again based on Wilson score
 // Higher Wilson score = longer interval (more confident it's learned)
 // Returns interval in milliseconds
@@ -156,7 +158,7 @@ async function getQuiz(req, res) {
 
     // Pick from the top candidates (highest priority)
     // Use weighted selection favoring the highest priority clues
-    const topCount = Math.min(5, cluesWithScores.length);
+    const topCount = Math.min(TOP_CANDIDATES_COUNT, cluesWithScores.length);
     const weights = [];
     for (let i = 0; i < topCount; i++) {
       // Higher weight for higher priority (lower index)
