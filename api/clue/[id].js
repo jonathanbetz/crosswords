@@ -1,23 +1,10 @@
 import { kv } from '@vercel/kv';
+import { apiHandler } from '../utils/api-handler.js';
 
-export default async function handler(req, res) {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+export default apiHandler({ PATCH: updateClue, DELETE: deleteClue });
 
-  const { id } = req.query;
-
-  if (req.method === 'PATCH') {
-    return updateClue(req, res, id);
-  } else if (req.method === 'DELETE') {
-    return deleteClue(req, res, id);
-  }
-
-  return res.status(405).json({ error: 'Method not allowed' });
-}
-
-async function updateClue(req, res, clueId) {
+async function updateClue(req, res) {
+  const clueId = req.query.id;
   try {
     const { puzzleDate, updates } = req.body;
 
@@ -65,7 +52,8 @@ async function updateClue(req, res, clueId) {
   }
 }
 
-async function deleteClue(req, res, clueId) {
+async function deleteClue(req, res) {
+  const clueId = req.query.id;
   try {
     const { puzzleDate } = req.query;
 

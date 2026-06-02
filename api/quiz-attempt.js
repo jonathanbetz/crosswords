@@ -1,19 +1,7 @@
 import { kv } from '@vercel/kv';
+import { apiHandler } from './utils/api-handler.js';
 
-export default async function handler(req, res) {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method === 'POST') {
-    return recordAttempt(req, res);
-  } else if (req.method === 'GET') {
-    return getStats(req, res);
-  }
-
-  return res.status(405).json({ error: 'Method not allowed' });
-}
+export default apiHandler({ GET: getStats, POST: recordAttempt });
 
 const RECENT_ATTEMPTS_KEY = 'quiz:recent-attempts';
 const RECENT_ATTEMPTS_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -50,14 +38,16 @@ async function recordAttempt(req, res) {
       hintsAvailable = answerLength * 2;
     }
 
-    // On correct answer (all letters right): next attempt gets (hints used - 1)
-    // allCorrect means all letters were correct, even if hints were used
-    // On incorrect: increment hints by 1
-    if (allCorrect && typeof hintsUsed === 'number') {
+    // allCorrect=true means all letters were correct (even if hints were used)
+    // allCorrect=false means the answer was wrong
+    // When allCorrect is not provided (undefined), hints are not updated
+    if (allCorrect === true && typeof hintsUsed === 'number') {
+      // Correct: next attempt earns (hints used - 1), rewarding efficiency
       hintsAvailable = Math.max(0, hintsUsed - 1);
       await kv.set(hintsKey, hintsAvailable);
     } else if (allCorrect === false && hintsAvailable !== null) {
-      hintsAvailable = hintsAvailable + 1;
+      // Incorrect: add one hint to help the next attempt
+      hintsAvailable += 1;
       await kv.set(hintsKey, hintsAvailable);
     }
 
