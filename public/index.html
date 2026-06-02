@@ -374,6 +374,41 @@
       background: #dc3545;
       color: white;
     }
+    .ignore-clue-btn {
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 11px;
+      color: #bbb;
+      padding: 2px 5px;
+      border-radius: 3px;
+      flex-shrink: 0;
+      line-height: 1;
+      opacity: 0;
+      transition: opacity 0.15s, color 0.15s, background 0.15s;
+    }
+    .clue-item:hover .ignore-clue-btn {
+      opacity: 1;
+    }
+    .ignore-clue-btn:hover {
+      background: #fee;
+      color: #dc3545;
+    }
+    .clue-item.ignored {
+      opacity: 0.45;
+    }
+    .clue-item.ignored .clue-text {
+      text-decoration: line-through;
+      color: #999;
+    }
+    .clue-item.ignored .ignore-clue-btn {
+      opacity: 1;
+      color: #007bff;
+    }
+    .clue-item.ignored .ignore-clue-btn:hover {
+      background: #e3f2fd;
+      color: #0056b3;
+    }
   </style>
 </head>
 <body>
@@ -642,13 +677,19 @@
         statsHtml = `<span class="${statsClass}">${correct}/${total}</span>`;
       }
 
+      const ignoredClass = clue.ignored ? ' ignored' : '';
+      const ignoreLabel = clue.ignored ? 'Restore' : 'Ignore';
+      const ignoreTitle = clue.ignored ? 'Restore to quiz rotation' : 'Remove from quiz rotation';
+
       return `
-        <li class="clue-item${isComplete ? ' complete' : ''}" data-clue-id="${clueId}">
+        <li class="clue-item${isComplete ? ' complete' : ''}${ignoredClass}" data-clue-id="${clueId}">
           <div class="clue-row">
             <span class="clue-number">${clue.number}.</span>
             <span class="clue-text">${escapeHtml(clue.text)}</span>
             ${statsHtml}
             <a href="${searchUrl}" target="_blank" rel="noopener" class="search-link" title="Search for clue">&#x1F50D;</a>
+            <button class="ignore-clue-btn" title="${ignoreTitle}"
+              onclick="toggleIgnoreClue('${clueId}', '${puzzleDate}', ${!!clue.ignored})">${ignoreLabel}</button>
           </div>
           <div class="clue-answer-row">
             <div class="letter-inputs" data-clue-id="${clueId}" data-puzzle-date="${puzzleDate}" data-pattern="${escapeHtml(pattern)}">
@@ -841,6 +882,41 @@
         }
       } catch (err) {
         alert('Error deleting puzzle: ' + err.message);
+      }
+    }
+
+    async function toggleIgnoreClue(clueId, puzzleDate, currentlyIgnored) {
+      const newIgnored = !currentlyIgnored;
+      const clueItem = document.querySelector(`li[data-clue-id="${clueId}"]`);
+      const btn = clueItem?.querySelector('.ignore-clue-btn');
+
+      // Optimistic UI update
+      if (clueItem) {
+        clueItem.classList.toggle('ignored', newIgnored);
+      }
+      if (btn) {
+        btn.textContent = newIgnored ? 'Restore' : 'Ignore';
+        btn.title = newIgnored ? 'Restore to quiz rotation' : 'Remove from quiz rotation';
+        btn.setAttribute('onclick', `toggleIgnoreClue('${clueId}', '${puzzleDate}', ${newIgnored})`);
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/api/clue/${clueId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ puzzleDate, updates: { ignored: newIgnored } })
+        });
+
+        if (!res.ok) throw new Error('Failed to update clue');
+      } catch (err) {
+        // Revert optimistic update on failure
+        if (clueItem) clueItem.classList.toggle('ignored', currentlyIgnored);
+        if (btn) {
+          btn.textContent = currentlyIgnored ? 'Restore' : 'Ignore';
+          btn.title = currentlyIgnored ? 'Restore to quiz rotation' : 'Remove from quiz rotation';
+          btn.setAttribute('onclick', `toggleIgnoreClue('${clueId}', '${puzzleDate}', ${currentlyIgnored})`);
+        }
+        console.error('Error toggling ignore state:', err);
       }
     }
 
