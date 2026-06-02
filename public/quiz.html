@@ -382,6 +382,70 @@
     .toggle-switch.active::after {
       transform: translateX(20px);
     }
+    .session-progress {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #e8f4fd;
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      flex-wrap: wrap;
+    }
+    .session-retired {
+      font-weight: bold;
+      color: #0d6efd;
+      white-space: nowrap;
+    }
+    .session-dots-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      flex: 1;
+    }
+    .session-clue-dots {
+      display: inline-flex;
+      gap: 2px;
+    }
+    .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .dot-filled {
+      background: #28a745;
+    }
+    .dot-empty {
+      background: #dee2e6;
+    }
+    .session-attempts {
+      color: #6c757d;
+      white-space: nowrap;
+      font-size: 12px;
+    }
+    .session-complete-screen {
+      text-align: center;
+      padding: 40px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    .session-complete-title {
+      font-size: 24px;
+      font-weight: bold;
+      color: #333;
+    }
+    .session-complete-detail {
+      font-size: 16px;
+      color: #555;
+    }
+    .session-complete-time {
+      font-size: 14px;
+      color: #6c757d;
+    }
   </style>
 </head>
 <body>
