@@ -421,6 +421,7 @@
     const API_BASE = '';
     const DB_NAME = 'crossword-quiz-offline';
     const DB_VERSION = 1;
+    const TOP_CANDIDATES_COUNT = 5;
 
     // === STATE ===
     let currentClue = null;
@@ -699,8 +700,8 @@
         return diff;
       });
 
-      // Weighted selection from top 5
-      const topCount = Math.min(5, cluesWithScores.length);
+      // Weighted selection from top candidates
+      const topCount = Math.min(TOP_CANDIDATES_COUNT, cluesWithScores.length);
       const weights = [];
       for (let i = 0; i < topCount; i++) {
         weights.push(topCount - i);
