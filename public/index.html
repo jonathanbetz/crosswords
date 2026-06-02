@@ -405,6 +405,7 @@
     <div class="empty-state">Select a puzzle date above to view clues</div>
   </div>
 
+  <script src="/utils/letter-input.js"></script>
   <script>
     const API_BASE = '';  // Same origin
     let showCompleted = false;
@@ -570,48 +571,19 @@
         container.querySelectorAll('.letter-inputs').forEach(letterContainer => {
           let saveTimeout;
           const clueId = letterContainer.dataset.clueId;
-          const puzzleDate = letterContainer.dataset.puzzleDate;
           const pattern = letterContainer.dataset.pattern;
+          const inputs = Array.from(letterContainer.querySelectorAll('.letter-input'));
 
-          letterContainer.querySelectorAll('.letter-input').forEach((input, idx) => {
-            input.addEventListener('input', (e) => {
-              const val = e.target.value.toUpperCase();
-              e.target.value = val;
-
-              // Update styling
+          setupLetterInputNavigation(inputs, {
+            onInput: (input, idx, val) => {
               updateLetterStyle(input, idx, pattern);
-
-              // Move to next input if a letter was entered
-              if (val && idx < pattern.length - 1) {
-                const nextInput = letterContainer.querySelectorAll('.letter-input')[idx + 1];
-                if (nextInput) nextInput.focus();
-              }
-
-              // Schedule save
+              if (val && idx < inputs.length - 1) inputs[idx + 1].focus();
               clearTimeout(saveTimeout);
               const statusEl = container.querySelector(`[data-status-for="${clueId}"]`);
               statusEl.textContent = '';
               statusEl.className = 'save-status';
               saveTimeout = setTimeout(() => saveAnswer(letterContainer), 500);
-            });
-
-            input.addEventListener('keydown', (e) => {
-              if (e.key === 'Backspace' && !e.target.value && idx > 0) {
-                const prevInput = letterContainer.querySelectorAll('.letter-input')[idx - 1];
-                if (prevInput) {
-                  prevInput.focus();
-                  prevInput.select();
-                }
-              } else if (e.key === 'ArrowLeft' && idx > 0) {
-                const prevInput = letterContainer.querySelectorAll('.letter-input')[idx - 1];
-                if (prevInput) prevInput.focus();
-              } else if (e.key === 'ArrowRight' && idx < pattern.length - 1) {
-                const nextInput = letterContainer.querySelectorAll('.letter-input')[idx + 1];
-                if (nextInput) nextInput.focus();
-              }
-            });
-
-            input.addEventListener('focus', () => input.select());
+            }
           });
         });
       } catch (err) {
