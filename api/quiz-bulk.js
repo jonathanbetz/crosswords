@@ -39,47 +39,64 @@ async function handleFullSync(req, res, showCompletedPuzzles) {
     });
   }
 
-  const clues = [];
+  // Batch fetch all puzzle records in one round-trip
+  const puzzleKeys = dates.map(d => `puzzle:${d}`);
+  const records = await kv.mget(...puzzleKeys);
 
-  for (const date of dates) {
-    const key = `puzzle:${date}`;
-    const record = await kv.get(key);
+  // Collect eligible clues and their KV keys for a second batch fetch
+  const eligibleClues = []; // { clue, date, markedComplete, statsKey, hintsKey }
+
+  for (let i = 0; i < dates.length; i++) {
+    const date = dates[i];
+    const record = records[i];
 
     if (!record || !record.clues) continue;
-
-    // Skip puzzles marked as complete unless includeCompleted is true
     if (record.markedComplete && !showCompletedPuzzles) continue;
 
     for (const clue of record.clues) {
-      // Skip ignored clues
-      if (clue.ignored) continue;
-
-      if (!hasCompleteAnswer(clue)) continue;
+      if (clue.ignored || !hasCompleteAnswer(clue)) continue;
 
       const clueId = `${clue.direction}-${clue.number}`;
-      const statsKey = `quiz:${date}:${clueId}`;
-      const hintsKey = `hints:${date}:${clueId}`;
-      const attempts = await kv.get(statsKey) || [];
-      let hintsAvailable = await kv.get(hintsKey);
-
-      // Default to 2x answer length if not set
-      if (hintsAvailable === null) {
-        hintsAvailable = clue.answer.length * 2;
-      }
-
-      clues.push({
-        text: clue.text,
-        pattern: clue.pattern,
-        answer: clue.answer,
-        number: clue.number,
-        direction: clue.direction,
-        puzzleDate: date,
-        attempts: attempts,
-        hintsAvailable: hintsAvailable,
-        puzzleComplete: record.markedComplete || false
+      eligibleClues.push({
+        clue,
+        date,
+        markedComplete: record.markedComplete || false,
+        statsKey: `quiz:${date}:${clueId}`,
+        hintsKey: `hints:${date}:${clueId}`
       });
     }
   }
+
+  if (eligibleClues.length === 0) {
+    return res.status(200).json({
+      clues: [],
+      newAttempts: [],
+      fetchedAt: Date.now(),
+      isIncremental: false
+    });
+  }
+
+  // Batch fetch all stats and hints keys in one round-trip
+  const allKeys = eligibleClues.flatMap(e => [e.statsKey, e.hintsKey]);
+  const allValues = await kv.mget(...allKeys);
+
+  const clues = eligibleClues.map(({ clue, date, markedComplete }, i) => {
+    const attempts = allValues[i * 2] || [];
+    const rawHints = allValues[i * 2 + 1];
+    const hintsAvailable = rawHints !== null ? rawHints : clue.answer.length * 2;
+
+    return {
+      text: clue.text,
+      pattern: clue.pattern,
+      answer: clue.answer,
+      number: clue.number,
+      direction: clue.direction,
+      puzzleDate: date,
+      attempts,
+      hintsAvailable,
+      puzzleComplete: markedComplete
+    };
+  });
 
   return res.status(200).json({
     clues,
