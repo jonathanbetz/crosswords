@@ -3,9 +3,14 @@ const API_BASE = '';
 const DB_NAME = 'crossword-quiz-offline';
 const DB_VERSION = 1;
 const TOP_CANDIDATES_COUNT = 5;
+const SESSION_SIZE = 20;
+const SESSION_CORRECT_REQUIRED = 3;
+const SESSION_SPACING = 10;
 
 // === STATE ===
 let currentClue = null;
+let currentSessionClue = null;
+let activeSession = null;
 let submitted = false;
 let hintUsed = false;
 let hintCheckedLetters = []; // Track which letters have been checked via hint
@@ -118,6 +123,23 @@ async function getAttempts(clueKey) {
     const request = store.get(clueKey);
 
     request.onsuccess = () => resolve(request.result?.attempts || []);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function getAllAttempts() {
+  return new Promise((resolve, reject) => {
+    const tx = dbTransaction('attempts');
+    const store = tx.objectStore('attempts');
+    const request = store.getAll();
+
+    request.onsuccess = () => {
+      const map = {};
+      for (const record of request.result) {
+        map[record.key] = record.attempts || [];
+      }
+      resolve(map);
+    };
     request.onerror = () => reject(request.error);
   });
 }
@@ -301,6 +323,166 @@ async function selectNextClue() {
   return cluesWithScores[selectedIndex];
 }
 
+// === SESSION MODE ===
+async function initSession() {
+  const [allClues, attemptsMap] = await Promise.all([getAllClues(), getAllAttempts()]);
+
+  const eligible = includeCompleted
+    ? allClues
+    : allClues.filter(c => !c.puzzleComplete);
+
+  if (eligible.length === 0) {
+    activeSession = null;
+    sessionStorage.removeItem('quiz-session');
+    return;
+  }
+
+  const now = Date.now();
+  const scored = eligible.map(clue => {
+    const attempts = attemptsMap[clue.key] || [];
+    const total = attempts.length;
+    const correct = attempts.filter(a => a.correct).length;
+    const wilsonLower = calculateWilsonLower(correct, total);
+    const lastAttemptTime = total > 0 ? Math.max(...attempts.map(a => a.timestamp)) : 0;
+    const priority = calculatePriority(wilsonLower, total, lastAttemptTime, now);
+    return { clue, priority };
+  });
+
+  scored.sort((a, b) => a.priority - b.priority);
+
+  // Take top 3x pool, weighted-sample SESSION_SIZE without replacement
+  const poolSize = Math.min(SESSION_SIZE * 3, scored.length);
+  const pool = scored.slice(0, poolSize);
+  const weights = pool.map((_, i) => Math.max(1, poolSize - i));
+
+  const remaining = pool.slice();
+  const remainingWeights = weights.slice();
+  const selected = [];
+  const count = Math.min(SESSION_SIZE, eligible.length);
+
+  while (selected.length < count && remaining.length > 0) {
+    const totalW = remainingWeights.reduce((a, b) => a + b, 0);
+    let rand = Math.random() * totalW;
+    let pick = remaining.length - 1;
+    for (let i = 0; i < remaining.length; i++) {
+      rand -= remainingWeights[i];
+      if (rand <= 0) { pick = i; break; }
+    }
+    selected.push(remaining[pick].clue);
+    remaining.splice(pick, 1);
+    remainingWeights.splice(pick, 1);
+  }
+
+  activeSession = {
+    sessionClues: selected.map(clue => ({
+      clue,
+      correctCount: 0,
+      nextEligibleAt: 0,
+      retired: false
+    })),
+    totalAttempts: 0,
+    startedAt: Date.now()
+  };
+
+  saveSession();
+}
+
+function saveSession() {
+  if (!activeSession) {
+    sessionStorage.removeItem('quiz-session');
+    return;
+  }
+  sessionStorage.setItem('quiz-session', JSON.stringify(activeSession));
+}
+
+function restoreSession() {
+  const raw = sessionStorage.getItem('quiz-session');
+  if (!raw) return false;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.sessionClues)) return false;
+    if (!parsed.sessionClues.some(sc => !sc.retired)) return false;
+    activeSession = parsed;
+    return true;
+  } catch (e) {
+    sessionStorage.removeItem('quiz-session');
+    return false;
+  }
+}
+
+function selectNextSessionClue() {
+  if (!activeSession) return null;
+
+  const { sessionClues, totalAttempts } = activeSession;
+  const unretired = sessionClues.filter(sc => !sc.retired);
+  if (unretired.length === 0) return null;
+
+  const eligible = unretired.filter(sc => sc.nextEligibleAt <= totalAttempts);
+  const pool = eligible.length > 0 ? eligible : unretired;
+
+  if (eligible.length === 0) {
+    // Spacing can't be honored — pick whichever is soonest eligible
+    return pool.reduce((a, b) => a.nextEligibleAt < b.nextEligibleAt ? a : b);
+  }
+
+  // Among eligible, prefer those with fewer session correct answers; break ties randomly
+  pool.sort((a, b) => {
+    const diff = a.correctCount - b.correctCount;
+    return diff !== 0 ? diff : Math.random() - 0.5;
+  });
+
+  return pool[0];
+}
+
+function recordSessionAttempt(sessionClue, allCorrect) {
+  if (!activeSession || !sessionClue) return;
+
+  activeSession.totalAttempts++;
+
+  if (allCorrect) {
+    sessionClue.correctCount++;
+    sessionClue.nextEligibleAt = activeSession.totalAttempts + SESSION_SPACING;
+    if (sessionClue.correctCount >= SESSION_CORRECT_REQUIRED) {
+      sessionClue.retired = true;
+    }
+  } else {
+    sessionClue.nextEligibleAt = activeSession.totalAttempts + 2;
+  }
+
+  saveSession();
+}
+
+function showSessionComplete() {
+  const startedAt = activeSession ? activeSession.startedAt : Date.now();
+  const clueCount = activeSession ? activeSession.sessionClues.length : SESSION_SIZE;
+  const totalAttempts = activeSession ? activeSession.totalAttempts : 0;
+
+  activeSession = null;
+  currentSessionClue = null;
+  saveSession();
+
+  const elapsedMs = Date.now() - startedAt;
+  const mins = Math.floor(elapsedMs / 60000);
+  const secs = Math.floor((elapsedMs % 60000) / 1000);
+  const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+
+  const container = document.getElementById('quiz');
+  container.innerHTML = `
+    <div class="session-complete-screen">
+      <div class="session-complete-title">Session Complete</div>
+      <div class="session-complete-detail">All ${clueCount} clues retired in ${totalAttempts} attempts</div>
+      <div class="session-complete-time">Time: ${timeStr}</div>
+      <button class="next-btn" onclick="startNewSession()">Start New Session</button>
+    </div>
+  `;
+}
+
+async function startNewSession() {
+  document.getElementById('quiz').innerHTML = '<div class="loading">Building session...</div>';
+  await initSession();
+  await loadClue();
+}
+
 // === OFFLINE SYNC LOGIC ===
 const SYNC_INTERVAL_MS = 5 * 60 * 1000; // Only sync if data is older than 5 minutes
 
@@ -431,6 +613,9 @@ async function recordAttempt(clueKey, correct, answerLength = 0, hintsUsed = 0, 
         // Update local hintsAvailable from server response
         if (data.hintsAvailable !== undefined) {
           await updateClueHints(clueKey, data.hintsAvailable);
+          if (currentClue && currentClue.key === clueKey) {
+            currentClue.hintsAvailable = data.hintsAvailable;
+          }
         }
         return data.stats;
       }
@@ -521,11 +706,11 @@ window.addEventListener('offline', () => {
 function toggleIncludeCompleted() {
   includeCompleted = !includeCompleted;
   document.getElementById('includeCompletedToggle').classList.toggle('active', includeCompleted);
-  // Refresh from server if online (force since mode changed)
+  // Refresh from server if online (force since mode changed), then reinitialize session
   if (isOnline) {
-    syncFromServer(true).then(() => loadClue());
+    syncFromServer(true).then(() => initSession()).then(() => loadClue());
   } else {
-    loadClue();
+    initSession().then(() => loadClue());
   }
 }
 
@@ -546,7 +731,19 @@ async function loadClue() {
   hintsUsedThisClue = 0;
 
   try {
-    const clue = await selectNextClue();
+    let clue;
+
+    if (activeSession) {
+      const sessionClue = selectNextSessionClue();
+      if (!sessionClue) {
+        showSessionComplete();
+        return;
+      }
+      currentSessionClue = sessionClue;
+      clue = sessionClue.clue;
+    } else {
+      clue = await selectNextClue();
+    }
 
     if (!clue) {
       throw new Error('No clues available. Go online to sync clues.');
@@ -597,7 +794,26 @@ function renderClue() {
   const hintsClass = hintsAvailable > 0 ? '' : 'zero';
   const hintBtnDisabled = hintsAvailable <= 0 ? 'disabled' : '';
 
-  container.innerHTML = `
+  let sessionProgressHtml = '';
+  if (activeSession && currentSessionClue) {
+    const retiredCount = activeSession.sessionClues.filter(sc => sc.retired).length;
+    const total = activeSession.sessionClues.length;
+    const dotsHtml = activeSession.sessionClues.map(sc => {
+      const filled = Math.min(sc.correctCount, SESSION_CORRECT_REQUIRED);
+      const dotSpans = Array.from({ length: SESSION_CORRECT_REQUIRED }, (_, i) =>
+        `<span class="dot ${i < filled ? 'dot-filled' : 'dot-empty'}"></span>`
+      ).join('');
+      return `<span class="session-clue-dots">${dotSpans}</span>`;
+    }).join('');
+    sessionProgressHtml = `
+      <div class="session-progress">
+        <span class="session-retired">${retiredCount}/${total} retired</span>
+        <span class="session-dots-row">${dotsHtml}</span>
+        <span class="session-attempts">${activeSession.totalAttempts} attempts</span>
+      </div>`;
+  }
+
+  container.innerHTML = sessionProgressHtml + `
     <div class="streak-display">
       <div class="streak-item">
         <span class="streak-label">Streak:</span>
@@ -926,6 +1142,10 @@ async function checkAnswer() {
   const stats = await recordAttempt(clueKey, countAsCorrect, answerLength, hintsUsedThisClue, allCorrect);
   displayClueStats(stats);
 
+  if (activeSession && currentSessionClue) {
+    recordSessionAttempt(currentSessionClue, allCorrect);
+  }
+
   // Auto-advance after 1 second (only if correct)
   if (allCorrect) {
     autoAdvancePaused = false;
@@ -970,6 +1190,10 @@ async function skipClue() {
   sessionStats.total++;
   currentStreak = 0;
 
+  if (activeSession && currentSessionClue) {
+    recordSessionAttempt(currentSessionClue, false);
+  }
+
   updateStats();
   loadClue();
 }
@@ -979,6 +1203,11 @@ async function ignoreClue() {
 
   const clueId = `${currentClue.direction}-${currentClue.number}`;
   const puzzleDate = currentClue.puzzleDate;
+
+  if (activeSession && currentSessionClue) {
+    currentSessionClue.retired = true;
+    saveSession();
+  }
 
   try {
     // Mark as ignored on server
@@ -1098,8 +1327,9 @@ async function clearCache() {
       request.onerror = () => reject(request.error);
     });
 
-    // Clear sync metadata from localStorage
+    // Clear sync metadata from localStorage and session state
     localStorage.removeItem('longestStreak');
+    sessionStorage.removeItem('quiz-session');
 
     alert('Cache cleared. Page will reload.');
     window.location.reload();
@@ -1122,7 +1352,10 @@ async function init() {
     const hasLocalData = localClues.length > 0;
 
     if (hasLocalData) {
-      // Load clue immediately from cache, sync in background
+      // Restore or create session, then load clue immediately from cache
+      if (!restoreSession()) {
+        await initSession();
+      }
       await loadClue();
       if (isOnline) {
         syncFromServer(false).then(() => syncPendingAttempts());
@@ -1136,7 +1369,7 @@ async function init() {
       await syncPendingAttempts();
     }
 
-    // Load first clue
+    await initSession();
     await loadClue();
   } catch (err) {
     console.error('Initialization error:', err);
