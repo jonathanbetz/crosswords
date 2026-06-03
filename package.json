@@ -8,10 +8,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@vercel/kv": "^2.0.0",
-    "caliperai": "github:jonathanbetz/caliperai"
+    "@vercel/kv": "^2.0.0"
   },
   "devDependencies": {
+    "caliperai": "github:jonathanbetz/caliperai",
     "vitest": "^3.2.4"
   }
 }
