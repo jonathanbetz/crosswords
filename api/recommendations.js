@@ -7,57 +7,80 @@ export default apiHandler({ GET: getRecommendations });
 
 async function getRecommendations(req, res) {
   try {
-    // Get all puzzle dates
     const dates = await kv.smembers('puzzle:dates');
 
     if (!dates || dates.length === 0) {
       return res.status(200).json({ recommendations: [] });
     }
 
+    // Batch fetch all puzzle records in one round-trip
+    const puzzleKeys = dates.map(d => `puzzle:${d}`);
+    const records = await kv.mget(...puzzleKeys);
+
+    // Collect eligible clues and their quiz keys for a second batch fetch
+    const eligiblePuzzles = []; // { date, record, eligibleClues: [{clue, clueId, statsKey}] }
+
+    for (let i = 0; i < dates.length; i++) {
+      const date = dates[i];
+      const record = records[i];
+      if (!record || !record.clues || record.markedComplete) continue;
+
+      const eligibleClues = [];
+      for (const clue of record.clues) {
+        if (clue.ignored || !clue.pattern) continue;
+        const clueId = `${clue.direction}-${clue.number}`;
+        eligibleClues.push({
+          clue,
+          clueId,
+          statsKey: `quiz:${date}:${clueId}`,
+          complete: hasCompleteAnswer(clue)
+        });
+      }
+
+      if (eligibleClues.length > 0) {
+        eligiblePuzzles.push({ date, record, eligibleClues });
+      }
+    }
+
+    if (eligiblePuzzles.length === 0) {
+      return res.status(200).json({ recommendations: [] });
+    }
+
+    // Batch fetch all quiz stats in one round-trip
+    const allStatsKeys = eligiblePuzzles.flatMap(p =>
+      p.eligibleClues.filter(ec => ec.complete).map(ec => ec.statsKey)
+    );
+    const allStats = allStatsKeys.length > 0 ? await kv.mget(...allStatsKeys) : [];
+
+    // Build a map from statsKey -> attempts[]
+    const statsMap = {};
+    allStatsKeys.forEach((key, i) => {
+      statsMap[key] = allStats[i] || [];
+    });
+
+    // Assemble recommendations
     const recommendations = [];
 
-    for (const date of dates) {
-      const key = `puzzle:${date}`;
-      const record = await kv.get(key);
-
-      if (!record || !record.clues) continue;
-
-      // Skip completed puzzles
-      if (record.markedComplete) continue;
-
+    for (const { date, eligibleClues } of eligiblePuzzles) {
       const clues = [];
       let totalSquares = 0;
       let totalExpected = 0;
       let quizzedClueCount = 0;
       let answeredClueCount = 0;
 
-      for (const clue of record.clues) {
-        // Skip ignored clues
-        if (clue.ignored) continue;
-
-        // Must have a pattern to know the length
-        if (!clue.pattern) continue;
-
+      for (const { clue, statsKey, complete } of eligibleClues) {
         const answerLength = clue.pattern.length;
         totalSquares += answerLength;
 
-        // If no complete answer, treat as 0% solvable (can't quiz on it)
-        const complete = hasCompleteAnswer(clue);
-
         let wilsonScore = 0;
         let total = 0;
-        let correct = 0;
 
         if (complete) {
           answeredClueCount++;
-          const clueId = `${clue.direction}-${clue.number}`;
-          const statsKey = `quiz:${date}:${clueId}`;
-          const attempts = await kv.get(statsKey) || [];
-
+          const attempts = statsMap[statsKey] || [];
           total = attempts.length;
-          correct = attempts.filter(a => a.correct).length;
+          const correct = attempts.filter(a => a.correct).length;
           wilsonScore = calculateWilsonLower(correct, total);
-
           if (total > 0) quizzedClueCount++;
         }
 
@@ -76,14 +99,11 @@ async function getRecommendations(req, res) {
         });
       }
 
-      // Skip puzzles with no quizzable clues
       if (clues.length === 0 || totalSquares === 0) continue;
-
-      const solvabilityScore = totalExpected / totalSquares;
 
       recommendations.push({
         puzzleDate: date,
-        solvabilityScore: Math.round(solvabilityScore * 100) / 100,
+        solvabilityScore: Math.round((totalExpected / totalSquares) * 100) / 100,
         totalSquares,
         expectedSquares: Math.round(totalExpected * 10) / 10,
         clueCount: clues.length,
@@ -93,7 +113,6 @@ async function getRecommendations(req, res) {
       });
     }
 
-    // Sort by solvability score descending (most solvable first)
     recommendations.sort((a, b) => b.solvabilityScore - a.solvabilityScore);
 
     return res.status(200).json({ recommendations });
