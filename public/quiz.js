@@ -350,15 +350,26 @@ async function initSession() {
 
   scored.sort((a, b) => a.priority - b.priority);
 
-  // Take top 3x pool, weighted-sample SESSION_SIZE without replacement
-  const poolSize = Math.min(SESSION_SIZE * 3, scored.length);
-  const pool = scored.slice(0, poolSize);
+  // One clue per puzzle: keep highest-priority clue per puzzle date.
+  // scored is already sorted ascending (best first), so first occurrence per date wins.
+  const bestByPuzzle = new Map();
+  for (const item of scored) {
+    if (!bestByPuzzle.has(item.clue.puzzleDate)) {
+      bestByPuzzle.set(item.clue.puzzleDate, item);
+    }
+  }
+  const puzzleReps = Array.from(bestByPuzzle.values());
+  puzzleReps.sort((a, b) => a.priority - b.priority);
+
+  // Take top 3x pool from distinct-puzzle representatives, weighted-sample SESSION_SIZE
+  const poolSize = Math.min(SESSION_SIZE * 3, puzzleReps.length);
+  const pool = puzzleReps.slice(0, poolSize);
   const weights = pool.map((_, i) => Math.max(1, poolSize - i));
 
   const remaining = pool.slice();
   const remainingWeights = weights.slice();
   const selected = [];
-  const count = Math.min(SESSION_SIZE, eligible.length);
+  const count = Math.min(SESSION_SIZE, puzzleReps.length);
 
   while (selected.length < count && remaining.length > 0) {
     const totalW = remainingWeights.reduce((a, b) => a + b, 0);
