@@ -490,12 +490,75 @@ function showSessionComplete() {
 
 async function startNewSession() {
   document.getElementById('quiz').innerHTML = '<div class="loading">Building session...</div>';
+  // Pull fresh clue eligibility before selecting so a new session never includes
+  // clues that were ignored or deleted on the server.
+  if (isOnline) await syncFromServer(true);
   await initSession();
   await loadClue();
 }
 
+// Given the session clues and the set of clue keys that still exist locally,
+// return the session clues that are still valid. Pure helper for testability.
+function reconcileSessionClues(sessionClues, validKeys) {
+  return sessionClues.filter(sc => validKeys.has(sc.clue.key));
+}
+
+// Drop any clues from the active session whose local record has disappeared
+// (e.g. a full sync pruned a clue that was ignored on the server). If the
+// currently displayed clue was removed, advance to the next one.
+async function reconcileActiveSession() {
+  if (!activeSession) return;
+
+  const clues = await getAllClues();
+  const validKeys = new Set(clues.map(c => c.key));
+  const before = activeSession.sessionClues.length;
+  activeSession.sessionClues = reconcileSessionClues(activeSession.sessionClues, validKeys);
+
+  if (activeSession.sessionClues.length === before) return;
+
+  const currentRemoved = currentSessionClue && !validKeys.has(currentSessionClue.clue.key);
+
+  if (!activeSession.sessionClues.some(sc => !sc.retired)) {
+    // Nothing selectable remains — end the session cleanly.
+    activeSession = null;
+    currentSessionClue = null;
+    saveSession();
+    return;
+  }
+
+  saveSession();
+
+  if (currentRemoved) {
+    currentSessionClue = null;
+    loadClue();
+  }
+}
+
 // === OFFLINE SYNC LOGIC ===
 const SYNC_INTERVAL_MS = 5 * 60 * 1000; // Only sync if data is older than 5 minutes
+// How stale full-clue data may get before we do a full (not incremental) sync.
+// Incremental syncs only carry new attempts — they never remove clues that were
+// ignored or deleted on the server, so a periodic full sync is what prunes them.
+const FULL_SYNC_INTERVAL_MS = 5 * 60 * 1000;
+
+// Decide whether a sync should be skipped, and if not, whether it should be a
+// full sync (clears and replaces the local clue store, pruning ignored/removed
+// clues) or an incremental sync (fetches only new attempts).
+// Pure function so it can be unit-tested independently of the browser runtime.
+function decideSyncStrategy({ force, sameMode, lastSync, lastFullSync, now,
+  syncIntervalMs = SYNC_INTERVAL_MS, fullSyncIntervalMs = FULL_SYNC_INTERVAL_MS }) {
+  // Skip entirely if we synced recently in the same mode (unless forced).
+  if (!force && sameMode && (now - lastSync) < syncIntervalMs) {
+    return { skip: true, useIncremental: false };
+  }
+
+  // A full sync is required when forced, when the mode changed, when we've never
+  // done a full sync, or when the full-clue data has gone stale.
+  const fullSyncDue = force || !sameMode || lastFullSync === 0
+    || (now - lastFullSync) >= fullSyncIntervalMs;
+
+  return { skip: false, useIncremental: !fullSyncDue && lastSync > 0 };
+}
 
 async function mergeNewAttempts(newAttempts) {
   // Merge new attempts from server into local IndexedDB
@@ -519,18 +582,21 @@ async function syncFromServer(force = false) {
     const meta = await getSyncMeta();
     const now = Date.now();
     const lastSync = meta?.timestamp || 0;
+    const lastFullSync = meta?.fullTimestamp || 0;
     const sameMode = meta?.includeCompleted === includeCompleted;
 
+    const { skip, useIncremental } = decideSyncStrategy({
+      force, sameMode, lastSync, lastFullSync, now
+    });
+
     // Skip sync if recent and same mode (unless forced)
-    if (!force && sameMode && (now - lastSync) < SYNC_INTERVAL_MS) {
+    if (skip) {
       console.log('Skipping sync - data is fresh');
       return true;
     }
 
     updateStatusIndicator('syncing');
 
-    // Use incremental sync if we have previous data with same mode
-    const useIncremental = lastSync > 0 && sameMode && !force;
     let url = includeCompleted
       ? `${API_BASE}/api/quiz-bulk?includeCompleted=true`
       : `${API_BASE}/api/quiz-bulk`;
@@ -545,7 +611,8 @@ async function syncFromServer(force = false) {
     const data = await res.json();
 
     if (data.isIncremental) {
-      // Incremental: merge new clues and attempts
+      // Incremental: merge new clues and attempts. Preserve the last full-sync
+      // timestamp so full syncs keep recurring on their own schedule.
       if (data.clues.length > 0) {
         await saveClues(data.clues);
       }
@@ -553,13 +620,17 @@ async function syncFromServer(force = false) {
         await mergeNewAttempts(data.newAttempts);
       }
       console.log(`Incremental sync: ${data.clues.length} clues, ${data.newAttempts.length} attempt updates`);
+      await setSyncMeta({ timestamp: data.fetchedAt, fullTimestamp: lastFullSync, includeCompleted });
     } else {
-      // Full sync: clear and replace everything
+      // Full sync: clear and replace everything. This drops clues that were
+      // ignored or deleted on the server since the last full sync.
       await saveClues(data.clues, true);
       console.log(`Full sync: ${data.clues.length} clues (cleared old data)`);
+      await setSyncMeta({ timestamp: data.fetchedAt, fullTimestamp: data.fetchedAt, includeCompleted });
+      // Drop any in-progress session clues that no longer exist locally.
+      await reconcileActiveSession();
     }
 
-    await setSyncMeta({ timestamp: data.fetchedAt, includeCompleted });
     updateStatusIndicator('online');
     return true;
   } catch (err) {
@@ -1363,13 +1434,20 @@ async function init() {
     const hasLocalData = localClues.length > 0;
 
     if (hasLocalData) {
-      // Restore or create session, then load clue immediately from cache
-      if (!restoreSession()) {
+      if (restoreSession()) {
+        // Continue an in-progress session immediately from cache for a snappy
+        // start; a background full sync (if due) prunes any now-ignored clues.
+        await loadClue();
+        if (isOnline) {
+          syncFromServer(false).then(() => syncPendingAttempts());
+        }
+      } else {
+        // Building a new session — pull fresh eligibility first when online so
+        // ignored/removed clues are excluded from the selection.
+        if (isOnline) await syncFromServer(true);
         await initSession();
-      }
-      await loadClue();
-      if (isOnline) {
-        syncFromServer(false).then(() => syncPendingAttempts());
+        await loadClue();
+        if (isOnline) syncPendingAttempts();
       }
       return;
     }
