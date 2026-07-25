@@ -1,13 +1,13 @@
 import { kv } from '@vercel/kv';
-import { hasCompleteAnswer } from './utils/clue.js';
-import { apiHandler } from './utils/api-handler.js';
+import { hasCompleteAnswer } from '../lib/clue.js';
+import { apiHandler } from '../lib/api-handler.js';
 import {
   TOP_CANDIDATES_COUNT,
   calculateMinInterval,
   calculatePriority,
   selectWeightedFromTop
-} from './utils/spaced-repetition.js';
-import { calculateWilsonLower } from './utils/wilson-score.js';
+} from '../lib/spaced-repetition.js';
+import { calculateWilsonLower } from '../lib/wilson-score.js';
 
 export default apiHandler({ GET: getQuiz });
 

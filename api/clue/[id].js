@@ -1,5 +1,5 @@
 import { kv } from '@vercel/kv';
-import { apiHandler } from '../utils/api-handler.js';
+import { apiHandler } from '../../lib/api-handler.js';
 
 export default apiHandler({ PATCH: updateClue, DELETE: deleteClue });
 

@@ -1,5 +1,5 @@
 import { kv } from '@vercel/kv';
-import { apiHandler } from './utils/api-handler.js';
+import { apiHandler } from '../lib/api-handler.js';
 
 const GITHUB_BASE = 'https://raw.githubusercontent.com/doshea/nyt_crosswords/master';
 

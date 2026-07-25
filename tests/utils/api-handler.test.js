@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { apiHandler } from '../../api/utils/api-handler.js';
+import { apiHandler } from '../../lib/api-handler.js';
 
 function mockReqRes(method) {
   const req = { method };

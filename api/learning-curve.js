@@ -1,7 +1,7 @@
 import { kv } from '@vercel/kv';
-import { calculateWilsonLower } from './utils/wilson-score.js';
-import { hasCompleteAnswer } from './utils/clue.js';
-import { apiHandler } from './utils/api-handler.js';
+import { calculateWilsonLower } from '../lib/wilson-score.js';
+import { hasCompleteAnswer } from '../lib/clue.js';
+import { apiHandler } from '../lib/api-handler.js';
 
 export default apiHandler({ GET: getLearningCurve });
 

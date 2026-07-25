@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasCompleteAnswer } from '../../api/utils/clue.js';
+import { hasCompleteAnswer } from '../../lib/clue.js';
 
 describe('hasCompleteAnswer', () => {
   it('returns true when answer length matches pattern length', () => {

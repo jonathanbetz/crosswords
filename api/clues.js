@@ -1,6 +1,6 @@
 import { kv } from '@vercel/kv';
-import { hasCompleteAnswer } from './utils/clue.js';
-import { apiHandler } from './utils/api-handler.js';
+import { hasCompleteAnswer } from '../lib/clue.js';
+import { apiHandler } from '../lib/api-handler.js';
 
 export default apiHandler({ GET: getClues, POST: saveClues });
 

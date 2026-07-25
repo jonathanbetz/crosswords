@@ -4,7 +4,7 @@ import {
   calculatePriority,
   selectWeightedFromTop,
   TOP_CANDIDATES_COUNT
-} from '../../api/utils/spaced-repetition.js';
+} from '../../lib/spaced-repetition.js';
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
