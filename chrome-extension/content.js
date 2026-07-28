@@ -45,7 +45,9 @@
         puzzleDate,
         across: unansweredClues.across,
         down: unansweredClues.down,
+        solved: unansweredClues.solved,
         totalUnanswered: unansweredClues.across.length + unansweredClues.down.length,
+        totalSolved: unansweredClues.solved.length,
         totalClues: clues.across.length + clues.down.length
       };
     } catch (e) {
@@ -541,36 +543,36 @@
   function filterUnansweredClues(clues, grid) {
     const unansweredAcross = [];
     const unansweredDown = [];
+    // Clues the grid shows as fully filled — candidates for the "solved" sync,
+    // which lets the server mark them ignored if they match the correct answer.
+    const solved = [];
 
-    clues.across.forEach(clue => {
-      const pattern = getAnswerPattern(clue.number, 'across', grid);
+    const categorize = (clue, direction, unansweredTarget) => {
+      const pattern = getAnswerPattern(clue.number, direction, grid);
       // Include if pattern is incomplete, or if we couldn't determine pattern
       if (!pattern || !isPatternComplete(pattern)) {
-        unansweredAcross.push({
+        unansweredTarget.push({
           number: clue.number,
           text: clue.text,
-          direction: 'across',
+          direction,
           pattern: pattern || null
         });
+      } else {
+        solved.push({
+          number: clue.number,
+          direction,
+          pattern
+        });
       }
-    });
+    };
 
-    clues.down.forEach(clue => {
-      const pattern = getAnswerPattern(clue.number, 'down', grid);
-      // Include if pattern is incomplete, or if we couldn't determine pattern
-      if (!pattern || !isPatternComplete(pattern)) {
-        unansweredDown.push({
-          number: clue.number,
-          text: clue.text,
-          direction: 'down',
-          pattern: pattern || null
-        });
-      }
-    });
+    clues.across.forEach(clue => categorize(clue, 'across', unansweredAcross));
+    clues.down.forEach(clue => categorize(clue, 'down', unansweredDown));
 
     return {
       across: unansweredAcross,
-      down: unansweredDown
+      down: unansweredDown,
+      solved
     };
   }
 

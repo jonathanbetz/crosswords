@@ -43,8 +43,10 @@ document.addEventListener('DOMContentLoaded', () => {
         throw new Error(results.error);
       }
 
-      if (results.totalUnanswered === 0) {
-        statusDiv.innerHTML = '<p>No unanswered clues found.</p>';
+      const solvedClues = results.solved || [];
+
+      if (results.totalUnanswered === 0 && solvedClues.length === 0) {
+        statusDiv.innerHTML = '<p>No clues to sync.</p>';
         return;
       }
 
@@ -66,7 +68,10 @@ document.addEventListener('DOMContentLoaded', () => {
             text: c.text,
             pattern: c.pattern
           }))
-        ]
+        ],
+        // Clues now filled in on the page. The server ignores the ones that were
+        // unsolved in our data but are now solved correctly, dropping them from quizzing.
+        solved: solvedClues
       };
 
       const response = await fetch(`${API_BASE_URL}/api/clues`, {
@@ -82,7 +87,15 @@ document.addEventListener('DOMContentLoaded', () => {
         throw new Error(errorData.error || 'Failed to save');
       }
 
-      statusDiv.innerHTML = `<p><strong>${results.totalUnanswered} clues saved</strong></p><p class="date">${results.puzzleDate}</p>`;
+      const data = await response.json().catch(() => ({}));
+      const parts = [];
+      if (results.totalUnanswered > 0) {
+        parts.push(`${results.totalUnanswered} clues saved`);
+      }
+      if (data.ignoredCount > 0) {
+        parts.push(`${data.ignoredCount} solved → ignored`);
+      }
+      statusDiv.innerHTML = `<p><strong>${parts.join(', ') || 'Synced'}</strong></p><p class="date">${results.puzzleDate}</p>`;
 
     } catch (err) {
       showError(err.message || 'An unexpected error occurred.');
