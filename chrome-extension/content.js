@@ -122,20 +122,18 @@
 
   function extractSVGGrid(grid, svgCells) {
     // Parse SVG cells - NYT uses g.xwd__cell elements with rect and text children
-    const cellData = [];
-    const cellSize = 33; // NYT uses 33px cells (plus 3px offset)
+    const rawCells = [];
 
     svgCells.forEach(cell => {
       const rect = cell.querySelector('rect');
       if (!rect) return;
 
-      // Get position from rect x/y attributes
+      // Get position from rect x/y attributes. We keep the raw pixel coordinates
+      // and derive row/col later from their rank among all cells — NYT scales the
+      // cell size to fit the grid (21x21 grids use smaller cells than 15x15), so a
+      // hardcoded cell size mis-maps larger puzzles.
       const x = parseFloat(rect.getAttribute('x') || '0');
       const y = parseFloat(rect.getAttribute('y') || '0');
-
-      // Calculate row/col (accounting for 3px offset)
-      const col = Math.round((x - 3) / cellSize);
-      const row = Math.round((y - 3) / cellSize);
 
       // Check if this is a black cell
       const isBlack = rect.classList.contains('xwd__cell--block');
@@ -166,18 +164,50 @@
         }
       });
 
-      cellData.push({ row, col, isBlack, cellNumber, letter });
+      rawCells.push({ x, y, isBlack, cellNumber, letter });
     });
 
     // If no cells found, return empty grid
-    if (cellData.length === 0) {
+    if (rawCells.length === 0) {
       return grid;
     }
 
-    // Determine grid size
-    const maxRow = Math.max(...cellData.map(c => c.row));
-    const maxCol = Math.max(...cellData.map(c => c.col));
-    grid.size = Math.max(maxRow, maxCol) + 1;
+    return buildGridFromRawCells(grid, rawCells);
+  }
+
+  // Group nearly-equal coordinate values into ordered tracks (rows or columns),
+  // tolerant of sub-pixel jitter. Returns the sorted representative of each track.
+  function coordinateTracks(values) {
+    const sorted = [...values].sort((a, b) => a - b);
+    const tracks = [];
+    for (const v of sorted) {
+      if (tracks.length === 0 || v - tracks[tracks.length - 1] > 1) {
+        tracks.push(v);
+      }
+    }
+    return tracks;
+  }
+
+  function nearestTrackIndex(tracks, value) {
+    let best = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < tracks.length; i++) {
+      const dist = Math.abs(tracks[i] - value);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  // Map raw pixel-positioned cells onto a row/col grid by ranking their x/y
+  // coordinates, so the mapping is independent of NYT's (variable) cell size.
+  function buildGridFromRawCells(grid, rawCells) {
+    const colTracks = coordinateTracks(rawCells.map(c => c.x));
+    const rowTracks = coordinateTracks(rawCells.map(c => c.y));
+
+    grid.size = Math.max(rowTracks.length, colTracks.length);
 
     // Sanity check
     if (grid.size <= 0 || grid.size > 25) {
@@ -192,7 +222,9 @@
     }));
 
     // Populate grid
-    cellData.forEach(({ row, col, isBlack, cellNumber, letter }) => {
+    rawCells.forEach(({ x, y, isBlack, cellNumber, letter }) => {
+      const row = nearestTrackIndex(rowTracks, y);
+      const col = nearestTrackIndex(colTracks, x);
       const idx = row * grid.size + col;
       if (idx >= 0 && idx < grid.cells.length) {
         grid.cells[idx] = { isBlack, letter, cellNumber };
