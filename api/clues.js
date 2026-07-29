@@ -1,5 +1,5 @@
 import { kv } from '@vercel/kv';
-import { hasCompleteAnswer } from '../lib/clue.js';
+import { hasCompleteAnswer, puzzleUnsolvedStats } from '../lib/clue.js';
 import { apiHandler } from '../lib/api-handler.js';
 
 export default apiHandler({ GET: getClues, POST: saveClues });
@@ -151,17 +151,35 @@ async function getClues(req, res) {
       const puzzles = await Promise.all(
         sortedDates.map(async (d) => {
           const record = await kv.get(`puzzle:${d}`);
-          if (!record) return { date: d, total: 0, incomplete: 0, markedComplete: false };
+          if (!record) {
+            return { date: d, total: 0, incomplete: 0, markedComplete: false, unsolvedClues: 0, unsolvedSquares: 0 };
+          }
 
           const nonIgnoredClues = record.clues.filter(c => !c.ignored);
           const total = nonIgnoredClues.length;
           const incomplete = nonIgnoredClues.filter(c => !hasCompleteAnswer(c)).length;
+          const { unsolvedClues, unsolvedSquares } = puzzleUnsolvedStats(record);
 
-          return { date: d, total, incomplete, markedComplete: record.markedComplete || false };
+          return {
+            date: d,
+            total,
+            incomplete,
+            markedComplete: record.markedComplete || false,
+            unsolvedClues,
+            unsolvedSquares
+          };
         })
       );
 
-      return res.status(200).json({ dates: sortedDates, puzzles });
+      // Aggregate remaining work across puzzles the user hasn't marked complete.
+      const active = puzzles.filter(p => !p.markedComplete);
+      const stats = {
+        unsolvedPuzzles: active.filter(p => p.unsolvedClues > 0).length,
+        unsolvedClues: active.reduce((sum, p) => sum + p.unsolvedClues, 0),
+        unsolvedSquares: active.reduce((sum, p) => sum + p.unsolvedSquares, 0)
+      };
+
+      return res.status(200).json({ dates: sortedDates, puzzles, stats });
     }
   } catch (error) {
     console.error('Error getting clues:', error);
