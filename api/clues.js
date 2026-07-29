@@ -179,6 +179,11 @@ async function getClues(req, res) {
         unsolvedSquares: active.reduce((sum, p) => sum + p.unsolvedSquares, 0)
       };
 
+      // The shared header strip only needs the aggregate — skip the puzzle list.
+      if (req.query.statsOnly === 'true') {
+        return res.status(200).json({ stats });
+      }
+
       return res.status(200).json({ dates: sortedDates, puzzles, stats });
     }
   } catch (error) {

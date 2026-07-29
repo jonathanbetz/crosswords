@@ -41,39 +41,6 @@
       color: #666;
       margin-bottom: 16px;
     }
-    .header-stats {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      margin-bottom: 30px;
-    }
-    .header-stats .stat {
-      flex: 1;
-      min-width: 120px;
-      background: white;
-      padding: 12px 16px;
-      border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-      text-align: center;
-    }
-    .header-stats .stat-value {
-      display: block;
-      font-size: 24px;
-      font-weight: 700;
-      color: #dc3545;
-      line-height: 1.1;
-    }
-    .header-stats .stat-value.zero {
-      color: #28a745;
-    }
-    .header-stats .stat-label {
-      display: block;
-      margin-top: 4px;
-      font-size: 12px;
-      color: #666;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-    }
     .puzzle-nav {
       display: flex;
       align-items: center;
@@ -458,8 +425,6 @@
   </header>
   <p class="subtitle">Your unanswered clues for practice</p>
 
-  <div id="headerStats" class="header-stats" style="display: none;"></div>
-
   <div class="toggle-container">
     <span class="toggle-label" onclick="toggleShowCompleted()">Include completed puzzles</span>
     <div class="toggle-switch" id="showCompletedToggle" onclick="toggleShowCompleted()"></div>
@@ -476,6 +441,9 @@
   </div>
 
   <script src="/utils/letter-input.js"></script>
+  <!-- Index already loads /api/clues, so it feeds stats in manually rather than refetching. -->
+  <script>window.HEADER_STATS_MANUAL = true;</script>
+  <script src="/utils/header-stats.js"></script>
   <script>
     const API_BASE = '';  // Same origin
     let showCompleted = false;
@@ -535,30 +503,6 @@
       document.getElementById('nextBtn').disabled = currentPuzzleIndex === visible.length - 1;
     }
 
-    function renderHeaderStats(stats) {
-      const el = document.getElementById('headerStats');
-      if (!stats) {
-        el.style.display = 'none';
-        return;
-      }
-      const fmt = n => (n || 0).toLocaleString();
-      const cls = n => (n ? '' : ' zero');
-      el.innerHTML = `
-        <div class="stat">
-          <span class="stat-value${cls(stats.unsolvedPuzzles)}">${fmt(stats.unsolvedPuzzles)}</span>
-          <span class="stat-label">Puzzles unsolved</span>
-        </div>
-        <div class="stat">
-          <span class="stat-value${cls(stats.unsolvedClues)}">${fmt(stats.unsolvedClues)}</span>
-          <span class="stat-label">Clues remaining</span>
-        </div>
-        <div class="stat">
-          <span class="stat-value${cls(stats.unsolvedSquares)}">${fmt(stats.unsolvedSquares)}</span>
-          <span class="stat-label">Squares remaining</span>
-        </div>`;
-      el.style.display = 'flex';
-    }
-
     async function loadDates() {
       try {
         const res = await fetch(`${API_BASE}/api/clues`);
@@ -574,7 +518,7 @@
         puzzlesData = data.puzzles || [];
 
         // Show remaining-work stats across all (non-completed) puzzles
-        renderHeaderStats(data.stats);
+        HeaderStats.render(data.stats);
 
         // Check for date in URL query parameter
         const urlParams = new URLSearchParams(window.location.search);
