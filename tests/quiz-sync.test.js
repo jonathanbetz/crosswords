@@ -19,6 +19,13 @@ function reconcileSessionClues(sessionClues, validKeys) {
   return sessionClues.filter(sc => validKeys.has(sc.clue.key));
 }
 
+function mergeAttempts(existing, incoming) {
+  const byTs = new Map();
+  for (const a of existing || []) byTs.set(a.timestamp, a);
+  for (const a of incoming || []) if (!byTs.has(a.timestamp)) byTs.set(a.timestamp, a);
+  return Array.from(byTs.values()).sort((x, y) => x.timestamp - y.timestamp);
+}
+
 describe('decideSyncStrategy', () => {
   const now = 10 * 60 * 1000;
 
@@ -97,5 +104,43 @@ describe('reconcileSessionClues', () => {
     const session = makeSession(['a', 'b']);
     const result = reconcileSessionClues(session, new Set());
     expect(result).toHaveLength(0);
+  });
+});
+
+describe('mergeAttempts', () => {
+  it('keeps local attempts the server snapshot has not caught up with', () => {
+    // The bug: a full sync overwrote local attempts with a server snapshot that
+    // was missing a just-recorded (still-pending) attempt, rolling it back and
+    // making the clue eligible again. Merge must preserve the local attempt.
+    const server = [{ timestamp: 100, correct: true }];
+    const local = [{ timestamp: 100, correct: true }, { timestamp: 200, correct: true }];
+    const merged = mergeAttempts(local, server);
+    expect(merged).toHaveLength(2);
+    expect(merged.map(a => a.timestamp)).toEqual([100, 200]);
+  });
+
+  it('adds server attempts not present locally', () => {
+    const local = [{ timestamp: 100, correct: true }];
+    const server = [{ timestamp: 100, correct: true }, { timestamp: 300, correct: false }];
+    const merged = mergeAttempts(local, server);
+    expect(merged.map(a => a.timestamp)).toEqual([100, 300]);
+  });
+
+  it('dedupes by timestamp and returns chronological order', () => {
+    const a = [{ timestamp: 300, correct: true }, { timestamp: 100, correct: true }];
+    const b = [{ timestamp: 200, correct: false }, { timestamp: 300, correct: true }];
+    const merged = mergeAttempts(a, b);
+    expect(merged.map(x => x.timestamp)).toEqual([100, 200, 300]);
+  });
+
+  it('never shrinks below the larger input (append-only union)', () => {
+    const local = [{ timestamp: 1 }, { timestamp: 2 }, { timestamp: 3 }];
+    const server = [{ timestamp: 1 }];
+    expect(mergeAttempts(local, server).length).toBeGreaterThanOrEqual(local.length);
+  });
+
+  it('handles empty/undefined inputs', () => {
+    expect(mergeAttempts(undefined, undefined)).toEqual([]);
+    expect(mergeAttempts([], [{ timestamp: 5, correct: true }]).map(a => a.timestamp)).toEqual([5]);
   });
 });

@@ -41,11 +41,19 @@ describe('calculateMinInterval', () => {
   });
 
   it('returns a very long interval for a high Wilson score with many attempts', () => {
-    // wilson=0.99, total=20 yields a long interval due to attempt bonus
-    // The algorithm doesn't hard-cap at 4h; the 4h figure is the base max before attempt bonus
+    // wilson=0.99, total=20 yields a long interval due to attempt bonus.
+    // The algorithm doesn't hard-cap; the 8h maxMinutes is the base scale before
+    // the attempt bonus (which nearly triples it for a well-practiced clue).
     const max = calculateMinInterval(0.99, 20);
-    expect(max).toBeGreaterThan(4 * HOUR);
-    expect(max).toBeLessThan(12 * HOUR); // sanity ceiling
+    expect(max).toBeGreaterThan(8 * HOUR);
+    expect(max).toBeLessThan(48 * HOUR); // sanity ceiling
+  });
+
+  it('rests a correctly-drilled clue long enough to survive back-to-back sessions', () => {
+    // A clue answered correctly a few times (e.g. 3/3, wilson ~0.44) should not
+    // resurface within the ~minutes gap between consecutive drilling sessions.
+    const interval = calculateMinInterval(0.44, 3);
+    expect(interval).toBeGreaterThan(45 * MINUTE);
   });
 });
 

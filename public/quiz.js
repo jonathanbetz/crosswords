@@ -6,6 +6,10 @@ const TOP_CANDIDATES_COUNT = 5;
 const SESSION_SIZE = 20;
 const SESSION_CORRECT_REQUIRED = 3;
 const SESSION_SPACING = 10;
+// A clue attempted within this window is excluded from a fresh session's
+// candidate pool, so consecutive sessions don't re-serve just-drilled clues.
+// Relaxed automatically if too few fresh clues remain to fill a session.
+const SESSION_COOLDOWN_MS = 45 * 60 * 1000; // 45 minutes
 
 // === STATE ===
 let currentClue = null;
@@ -68,13 +72,25 @@ function dbTransaction(storeNames, mode = 'readonly') {
   return db.transaction(storeNames, mode);
 }
 
+// Union two attempt arrays by timestamp, keeping order. Attempts are
+// append-only, so a union never loses a locally-recorded attempt that the
+// server snapshot hasn't caught up with yet. Pure so it can be unit-tested.
+function mergeAttempts(existing, incoming) {
+  const byTs = new Map();
+  for (const a of existing || []) byTs.set(a.timestamp, a);
+  for (const a of incoming || []) if (!byTs.has(a.timestamp)) byTs.set(a.timestamp, a);
+  return Array.from(byTs.values()).sort((x, y) => x.timestamp - y.timestamp);
+}
+
 async function saveClues(clues, clearFirst = false) {
   return new Promise((resolve, reject) => {
     const tx = dbTransaction(['clues', 'attempts'], 'readwrite');
     const clueStore = tx.objectStore('clues');
     const attemptStore = tx.objectStore('attempts');
 
-    // Clear existing clues if requested (for full sync)
+    // Clear existing clues if requested (for full sync). We deliberately do NOT
+    // clear the attempts store: a full sync must never drop a locally-recorded
+    // attempt the server hasn't seen yet (e.g. a still-pending POST).
     if (clearFirst) {
       clueStore.clear();
     }
@@ -93,11 +109,14 @@ async function saveClues(clues, clearFirst = false) {
         puzzleComplete: clue.puzzleComplete || false
       });
 
-      // Also store attempts
-      attemptStore.put({
-        key,
-        attempts: clue.attempts || []
-      });
+      // Merge server attempts with any local attempts rather than overwriting,
+      // so a full sync can never roll back local attempt history.
+      const incoming = clue.attempts || [];
+      const getReq = attemptStore.get(key);
+      getReq.onsuccess = () => {
+        const existing = getReq.result?.attempts || [];
+        attemptStore.put({ key, attempts: mergeAttempts(existing, incoming) });
+      };
     }
 
     tx.oncomplete = () => resolve();
@@ -236,12 +255,13 @@ function calculateWilsonLower(successes, total) {
 function calculateMinInterval(wilsonLower, total) {
   if (total === 0) return 0;
 
-  const baseMinutes = 1;
-  const maxMinutes = 240; // 4 hours
+  // Kept in sync with lib/spaced-repetition.js calculateMinInterval.
+  const baseMinutes = 5;
+  const maxMinutes = 480; // 8 hours at high Wilson
 
   const scaleFactor = Math.pow(wilsonLower, 2) * maxMinutes + baseMinutes;
   const attemptBonus = Math.min(total / 10, 1);
-  const adjustedMinutes = scaleFactor * (1 + attemptBonus * wilsonLower);
+  const adjustedMinutes = scaleFactor * (1 + attemptBonus * (0.5 + wilsonLower));
 
   return adjustedMinutes * 60 * 1000; // Convert to milliseconds
 }
@@ -324,6 +344,94 @@ async function selectNextClue() {
 }
 
 // === SESSION MODE ===
+
+// Order candidates so distinct puzzles are surfaced first, then second-best
+// clue per puzzle, and so on. `scored` must already be sorted by priority
+// (best first). This "round-robin by puzzle layer" keeps a single session
+// varied across puzzles while still making deeper clues from the same puzzles
+// available to fill a session when few puzzles are active.
+function orderByPuzzleLayers(scored) {
+  const byPuzzle = new Map();
+  for (const item of scored) {
+    const date = item.clue.puzzleDate;
+    if (!byPuzzle.has(date)) byPuzzle.set(date, []);
+    byPuzzle.get(date).push(item); // preserves priority order
+  }
+  const groups = Array.from(byPuzzle.values());
+  const ordered = [];
+  let layer = 0;
+  let added = true;
+  while (added) {
+    added = false;
+    const layerItems = [];
+    for (const g of groups) {
+      if (layer < g.length) { layerItems.push(g[layer]); added = true; }
+    }
+    layerItems.sort((a, b) => a.priority - b.priority);
+    ordered.push(...layerItems);
+    layer++;
+  }
+  return ordered;
+}
+
+// Build a session from scored, priority-sorted candidates. Each item is
+// { clue, priority, lastAttemptTime }. Prefers clues not attempted within
+// cooldownMs, prefers distinct puzzles within a session, and only reuses a
+// puzzle (or a cooled-down clue) when there aren't enough fresh distinct
+// clues to fill the session. Pure so it can be unit-tested.
+function selectSessionClues(scored, sessionSize, opts = {}) {
+  const now = opts.now != null ? opts.now : Date.now();
+  const cooldownMs = opts.cooldownMs || 0;
+  const rand = opts.random || Math.random;
+
+  const isFresh = it =>
+    !cooldownMs || !it.lastAttemptTime || (now - it.lastAttemptTime) >= cooldownMs;
+
+  // Fresh clues first, cooled-down clues only as fallback to fill a session.
+  const fresh = scored.filter(isFresh);
+  const stale = scored.filter(it => !isFresh(it));
+  const ordered = orderByPuzzleLayers(fresh).concat(orderByPuzzleLayers(stale));
+
+  const poolSize = Math.min(sessionSize * 3, ordered.length);
+  const pool = ordered.slice(0, poolSize);
+  const weights = pool.map((_, i) => Math.max(1, poolSize - i));
+
+  const remaining = pool.slice();
+  const remainingWeights = weights.slice();
+  const selected = [];
+  const usedPuzzles = new Set();
+  const count = Math.min(sessionSize, ordered.length);
+
+  while (selected.length < count && remaining.length > 0) {
+    // Prefer candidates from puzzles not yet used in this pass. Once every
+    // remaining puzzle is represented, start a fresh pass so extra clues are
+    // spread evenly across puzzles (round-robin) rather than piling onto one.
+    let candidateIdx = [];
+    for (let i = 0; i < remaining.length; i++) {
+      if (!usedPuzzles.has(remaining[i].clue.puzzleDate)) candidateIdx.push(i);
+    }
+    if (candidateIdx.length === 0) {
+      usedPuzzles.clear();
+      candidateIdx = remaining.map((_, i) => i);
+    }
+
+    const totalW = candidateIdx.reduce((s, i) => s + remainingWeights[i], 0);
+    let r = rand() * totalW;
+    let pick = candidateIdx[candidateIdx.length - 1];
+    for (const i of candidateIdx) {
+      r -= remainingWeights[i];
+      if (r <= 0) { pick = i; break; }
+    }
+
+    selected.push(remaining[pick].clue);
+    usedPuzzles.add(remaining[pick].clue.puzzleDate);
+    remaining.splice(pick, 1);
+    remainingWeights.splice(pick, 1);
+  }
+
+  return selected;
+}
+
 async function initSession() {
   const [allClues, attemptsMap] = await Promise.all([getAllClues(), getAllAttempts()]);
 
@@ -345,44 +453,15 @@ async function initSession() {
     const wilsonLower = calculateWilsonLower(correct, total);
     const lastAttemptTime = total > 0 ? Math.max(...attempts.map(a => a.timestamp)) : 0;
     const priority = calculatePriority(wilsonLower, total, lastAttemptTime, now);
-    return { clue, priority };
+    return { clue, priority, lastAttemptTime };
   });
 
   scored.sort((a, b) => a.priority - b.priority);
 
-  // One clue per puzzle: keep highest-priority clue per puzzle date.
-  // scored is already sorted ascending (best first), so first occurrence per date wins.
-  const bestByPuzzle = new Map();
-  for (const item of scored) {
-    if (!bestByPuzzle.has(item.clue.puzzleDate)) {
-      bestByPuzzle.set(item.clue.puzzleDate, item);
-    }
-  }
-  const puzzleReps = Array.from(bestByPuzzle.values());
-  puzzleReps.sort((a, b) => a.priority - b.priority);
-
-  // Take top 3x pool from distinct-puzzle representatives, weighted-sample SESSION_SIZE
-  const poolSize = Math.min(SESSION_SIZE * 3, puzzleReps.length);
-  const pool = puzzleReps.slice(0, poolSize);
-  const weights = pool.map((_, i) => Math.max(1, poolSize - i));
-
-  const remaining = pool.slice();
-  const remainingWeights = weights.slice();
-  const selected = [];
-  const count = Math.min(SESSION_SIZE, puzzleReps.length);
-
-  while (selected.length < count && remaining.length > 0) {
-    const totalW = remainingWeights.reduce((a, b) => a + b, 0);
-    let rand = Math.random() * totalW;
-    let pick = remaining.length - 1;
-    for (let i = 0; i < remaining.length; i++) {
-      rand -= remainingWeights[i];
-      if (rand <= 0) { pick = i; break; }
-    }
-    selected.push(remaining[pick].clue);
-    remaining.splice(pick, 1);
-    remainingWeights.splice(pick, 1);
-  }
+  const selected = selectSessionClues(scored, SESSION_SIZE, {
+    now,
+    cooldownMs: SESSION_COOLDOWN_MS
+  });
 
   activeSession = {
     sessionClues: selected.map(clue => ({
