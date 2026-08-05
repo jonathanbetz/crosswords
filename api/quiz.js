@@ -1,12 +1,8 @@
 import { kv } from '@vercel/kv';
 import { hasCompleteAnswer } from '../lib/clue.js';
 import { apiHandler } from '../lib/api-handler.js';
-import {
-  TOP_CANDIDATES_COUNT,
-  calculateMinInterval,
-  calculatePriority,
-  selectWeightedFromTop
-} from '../lib/spaced-repetition.js';
+import { selectWeightedFromTop } from '../lib/spaced-repetition.js';
+import { computeSchedule, schedulePriority } from '../lib/scheduler.js';
 import { calculateWilsonLower } from '../lib/wilson-score.js';
 
 export default apiHandler({ GET: getQuiz });
@@ -65,20 +61,13 @@ async function getQuiz(req, res) {
         const total = attempts.length;
         const correct = attempts.filter(a => a.correct).length;
 
-        // Calculate Wilson score lower bound
+        // Wilson score is kept for display/stats only.
         const wilsonLower = calculateWilsonLower(correct, total);
 
-        // Get last attempt time
-        const lastAttemptTime = total > 0
-          ? Math.max(...attempts.map(a => a.timestamp))
-          : 0;
-
-        // Calculate spaced repetition priority
-        const priority = calculatePriority(wilsonLower, total, lastAttemptTime, now);
-
-        // Calculate minimum interval for display
-        const minInterval = calculateMinInterval(wilsonLower, total);
-        const timeSinceLastAttempt = total > 0 ? now - lastAttemptTime : null;
+        // FSRS-lite schedule drives selection priority.
+        const schedule = computeSchedule(attempts, now);
+        const priority = schedulePriority(schedule, now);
+        const timeSinceLastAttempt = total > 0 ? now - schedule.lastReviewTime : null;
 
         return {
           ...clue,
@@ -86,8 +75,8 @@ async function getQuiz(req, res) {
           total,
           correct,
           priority,
-          lastAttemptTime,
-          minInterval,
+          lastAttemptTime: schedule.lastReviewTime,
+          schedule,
           timeSinceLastAttempt
         };
       })
@@ -121,8 +110,11 @@ async function getQuiz(req, res) {
       correct: clue.correct,
       spacedRepetition: {
         priority: clue.priority,
-        minIntervalMs: clue.minInterval,
-        minIntervalMinutes: Math.round(clue.minInterval / 60000),
+        stabilityMs: clue.schedule.stability,
+        stabilityMinutes: Math.round(clue.schedule.stability / 60000),
+        dueInMs: clue.total > 0 ? clue.schedule.dueTime - now : 0,
+        retrievability: clue.schedule.retrievability,
+        difficulty: clue.schedule.difficulty,
         timeSinceLastMs: clue.timeSinceLastAttempt,
         timeSinceLastMinutes: clue.timeSinceLastAttempt ? Math.round(clue.timeSinceLastAttempt / 60000) : null
       }

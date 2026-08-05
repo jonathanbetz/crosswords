@@ -115,14 +115,17 @@ async function handleIncrementalSync(req, res, sinceTimestamp, showCompletedPuzz
     .filter(a => a.timestamp > sinceTimestamp)
     .reduce((acc, attempt) => {
       // Group by clueKey
+      const entry = {
+        timestamp: attempt.timestamp,
+        correct: attempt.correct,
+        grade: attempt.grade,
+        hints: attempt.hints
+      };
       const existing = acc.find(a => a.clueKey === attempt.clueKey);
       if (existing) {
-        existing.attempts.push({ timestamp: attempt.timestamp, correct: attempt.correct });
+        existing.attempts.push(entry);
       } else {
-        acc.push({
-          clueKey: attempt.clueKey,
-          attempts: [{ timestamp: attempt.timestamp, correct: attempt.correct }]
-        });
+        acc.push({ clueKey: attempt.clueKey, attempts: [entry] });
       }
       return acc;
     }, []);

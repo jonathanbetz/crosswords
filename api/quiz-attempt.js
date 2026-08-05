@@ -8,7 +8,7 @@ const RECENT_ATTEMPTS_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 async function recordAttempt(req, res) {
   try {
-    const { clueId, puzzleDate, correct, answerLength, hintsUsed, allCorrect } = req.body;
+    const { clueId, puzzleDate, correct, answerLength, hintsUsed, allCorrect, grade } = req.body;
 
     if (!clueId || !puzzleDate || typeof correct !== 'boolean') {
       return res.status(400).json({ error: 'Missing clueId, puzzleDate, or correct' });
@@ -19,13 +19,19 @@ async function recordAttempt(req, res) {
     const hintsKey = `hints:${puzzleDate}:${clueId}`;
     const now = Date.now();
 
+    // Graded-recall signal for the scheduler. Prefer the grade the client sent;
+    // otherwise derive it from the binary result (legacy clients / skips).
+    const attemptGrade = grade || (correct ? 'good' : 'again');
+
     // Get existing attempts or create new array
     let attempts = await kv.get(key) || [];
 
     // Add new attempt
     attempts.push({
       timestamp: now,
-      correct
+      correct,
+      grade: attemptGrade,
+      hints: typeof hintsUsed === 'number' ? hintsUsed : 0
     });
 
     // Store attempts
@@ -62,7 +68,9 @@ async function recordAttempt(req, res) {
     recentAttempts.push({
       clueKey,
       timestamp: now,
-      correct
+      correct,
+      grade: attemptGrade,
+      hints: typeof hintsUsed === 'number' ? hintsUsed : 0
     });
 
     await kv.set(RECENT_ATTEMPTS_KEY, recentAttempts);

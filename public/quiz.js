@@ -180,11 +180,11 @@ async function saveLocalAttempt(clueKey, attempt) {
   });
 }
 
-async function queuePendingAttempt(clueKey, timestamp, correct) {
+async function queuePendingAttempt(clueKey, timestamp, correct, grade = null, hints = 0) {
   return new Promise((resolve, reject) => {
     const tx = dbTransaction('pendingAttempts', 'readwrite');
     const store = tx.objectStore('pendingAttempts');
-    store.add({ clueKey, timestamp, correct });
+    store.add({ clueKey, timestamp, correct, grade, hints });
 
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
@@ -235,52 +235,93 @@ async function setSyncMeta(meta) {
   });
 }
 
-// === SPACED REPETITION ALGORITHM ===
-// (Ported from api/quiz.js)
+// === FSRS-LITE SCHEDULER (mirror of lib/scheduler.js — keep in sync) ===
+const TARGET_RETENTION = 0.9;
+const NEW_CLUE_PRIORITY = -1000;
+const SCHED_MINUTE = 60 * 1000;
+const SCHED_HOUR = 60 * SCHED_MINUTE;
+const SCHED_DAY = 24 * SCHED_HOUR;
+const INITIAL_STABILITY = { again: 10 * SCHED_MINUTE, hard: 8 * SCHED_HOUR, good: 1 * SCHED_DAY };
+const MIN_STABILITY = 5 * SCHED_MINUTE;
+const MAX_STABILITY = 365 * SCHED_DAY;
+const INITIAL_DIFFICULTY = 0.3;
+const DIFFICULTY_DELTA = { again: 0.15, hard: 0.05, good: -0.05 };
+const MAX_STABILITY_GAIN = 4;
+const HARD_GAIN_FACTOR = 0.5;
+const LAPSE_RETENTION = 0.35;
 
-function calculateWilsonLower(successes, total) {
-  if (total === 0) return 0;
-
-  const z = 1.96; // 95% confidence
-  const p = successes / total;
-  const z2 = z * z;
-  const n = total;
-
-  const numerator = p + z2 / (2 * n) - z * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n);
-  const denominator = 1 + z2 / n;
-
-  return numerator / denominator;
+function clamp01(x) {
+  return Math.min(1, Math.max(0, x));
 }
 
-function calculateMinInterval(wilsonLower, total) {
-  if (total === 0) return 0;
-
-  // Kept in sync with lib/spaced-repetition.js calculateMinInterval.
-  const baseMinutes = 5;
-  const maxMinutes = 480; // 8 hours at high Wilson
-
-  const scaleFactor = Math.pow(wilsonLower, 2) * maxMinutes + baseMinutes;
-  const attemptBonus = Math.min(total / 10, 1);
-  const adjustedMinutes = scaleFactor * (1 + attemptBonus * (0.5 + wilsonLower));
-
-  return adjustedMinutes * 60 * 1000; // Convert to milliseconds
+function gradeOf(attempt) {
+  if (attempt && attempt.grade) return attempt.grade;
+  return attempt && attempt.correct ? 'good' : 'again';
 }
 
-function calculatePriority(wilsonLower, total, lastAttemptTime, now) {
-  if (total === 0) return -1000; // Never attempted - highest priority
+function retrievability(stability, elapsed) {
+  if (stability <= 0) return 0;
+  if (elapsed <= 0) return 1;
+  return Math.pow(TARGET_RETENTION, elapsed / stability);
+}
 
-  const minInterval = calculateMinInterval(wilsonLower, total);
-  const timeSinceLastAttempt = now - lastAttemptTime;
+function computeSchedule(attempts, now) {
+  const list = (attempts || [])
+    .filter(a => a && typeof a.timestamp === 'number')
+    .slice()
+    .sort((a, b) => a.timestamp - b.timestamp);
 
-  if (timeSinceLastAttempt < minInterval) {
-    const remainingRatio = (minInterval - timeSinceLastAttempt) / minInterval;
-    return 1000 + remainingRatio * 1000;
+  const total = list.length;
+  if (total === 0) {
+    return {
+      total: 0, correct: 0,
+      stability: 0, difficulty: INITIAL_DIFFICULTY,
+      lastReviewTime: 0, dueTime: 0, retrievability: null
+    };
   }
 
-  const overdueRatio = timeSinceLastAttempt / minInterval;
-  const overduePenalty = Math.min(overdueRatio - 1, 5) * 0.1;
+  let stability = 0;
+  let difficulty = INITIAL_DIFFICULTY;
+  let lastTime = 0;
+  let correct = 0;
 
-  return wilsonLower - overduePenalty;
+  for (const a of list) {
+    const g = gradeOf(a);
+    if (g !== 'again') correct++;
+
+    if (stability === 0) {
+      stability = INITIAL_STABILITY[g] != null ? INITIAL_STABILITY[g] : INITIAL_STABILITY.good;
+      difficulty = clamp01(INITIAL_DIFFICULTY + (DIFFICULTY_DELTA[g] || 0));
+    } else {
+      const elapsed = Math.max(0, a.timestamp - lastTime);
+      const R = retrievability(stability, elapsed);
+      difficulty = clamp01(difficulty + (DIFFICULTY_DELTA[g] || 0));
+
+      if (g === 'again') {
+        stability = Math.max(MIN_STABILITY, stability * LAPSE_RETENTION);
+      } else {
+        const gradeFactor = g === 'hard' ? HARD_GAIN_FACTOR : 1;
+        const gain = MAX_STABILITY_GAIN * (1 - difficulty) * gradeFactor * (1 - R);
+        stability = Math.min(MAX_STABILITY, stability * (1 + gain));
+      }
+    }
+    lastTime = a.timestamp;
+  }
+
+  return {
+    total,
+    correct,
+    stability,
+    difficulty,
+    lastReviewTime: lastTime,
+    dueTime: lastTime + stability,
+    retrievability: retrievability(stability, Math.max(0, now - lastTime))
+  };
+}
+
+function schedulePriority(schedule, now) {
+  if (!schedule || schedule.total === 0) return NEW_CLUE_PRIORITY;
+  return retrievability(schedule.stability, Math.max(0, now - schedule.lastReviewTime));
 }
 
 // === CLUE SELECTION ===
@@ -300,19 +341,15 @@ async function selectNextClue() {
 
   for (const clue of eligibleClues) {
     const attempts = await getAttempts(clue.key);
-    const total = attempts.length;
-    const correct = attempts.filter(a => a.correct).length;
-    const wilsonLower = calculateWilsonLower(correct, total);
-    const lastAttemptTime = total > 0 ? Math.max(...attempts.map(a => a.timestamp)) : 0;
-    const priority = calculatePriority(wilsonLower, total, lastAttemptTime, now);
+    const schedule = computeSchedule(attempts, now);
+    const priority = schedulePriority(schedule, now);
 
     cluesWithScores.push({
       ...clue,
-      total,
-      correct,
-      wilsonLower,
+      total: schedule.total,
+      correct: schedule.correct,
       priority,
-      lastAttemptTime
+      lastAttemptTime: schedule.lastReviewTime
     });
   }
 
@@ -448,12 +485,12 @@ async function initSession() {
   const now = Date.now();
   const scored = eligible.map(clue => {
     const attempts = attemptsMap[clue.key] || [];
-    const total = attempts.length;
-    const correct = attempts.filter(a => a.correct).length;
-    const wilsonLower = calculateWilsonLower(correct, total);
-    const lastAttemptTime = total > 0 ? Math.max(...attempts.map(a => a.timestamp)) : 0;
-    const priority = calculatePriority(wilsonLower, total, lastAttemptTime, now);
-    return { clue, priority, lastAttemptTime };
+    const schedule = computeSchedule(attempts, now);
+    return {
+      clue,
+      priority: schedulePriority(schedule, now),
+      lastAttemptTime: schedule.lastReviewTime
+    };
   });
 
   scored.sort((a, b) => a.priority - b.priority);
@@ -739,7 +776,12 @@ async function syncPendingAttempts() {
         await fetch(`${API_BASE}/api/quiz-attempt`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ clueId, puzzleDate, correct: attempt.correct })
+          body: JSON.stringify({
+            clueId, puzzleDate,
+            correct: attempt.correct,
+            grade: attempt.grade,
+            hintsUsed: attempt.hints || 0
+          })
         });
         await removePendingAttempt(attempt.id);
       } catch (err) {
@@ -754,11 +796,21 @@ async function syncPendingAttempts() {
   }
 }
 
+// Derive a graded-recall difficulty from the result. This is the richer signal
+// the scheduler learns from: a clue solved cold ('good') is a much stronger
+// memory than one that needed a hint ('hard'), which in turn is stronger than a
+// miss ('again') — yet the binary `correct` flag collapses the latter two.
+function gradeFromResult(allCorrect, hintsUsed) {
+  if (!allCorrect) return 'again';
+  return hintsUsed > 0 ? 'hard' : 'good';
+}
+
 async function recordAttempt(clueKey, correct, answerLength = 0, hintsUsed = 0, allCorrect = false) {
   const timestamp = Date.now();
+  const grade = gradeFromResult(allCorrect, hintsUsed);
 
-  // Always save locally
-  await saveLocalAttempt(clueKey, { timestamp, correct });
+  // Always save locally (with the graded signal + hint count for the scheduler)
+  await saveLocalAttempt(clueKey, { timestamp, correct, grade, hints: hintsUsed });
 
   if (isOnline) {
     try {
@@ -766,7 +818,7 @@ async function recordAttempt(clueKey, correct, answerLength = 0, hintsUsed = 0, 
       const res = await fetch(`${API_BASE}/api/quiz-attempt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clueId, puzzleDate, correct, answerLength, hintsUsed, allCorrect })
+        body: JSON.stringify({ clueId, puzzleDate, correct, answerLength, hintsUsed, allCorrect, grade })
       });
 
       if (res.ok) {
@@ -784,9 +836,9 @@ async function recordAttempt(clueKey, correct, answerLength = 0, hintsUsed = 0, 
       console.error('Failed to record attempt online:', err);
     }
     // If online request failed, queue for later
-    await queuePendingAttempt(clueKey, timestamp, correct);
+    await queuePendingAttempt(clueKey, timestamp, correct, grade, hintsUsed);
   } else {
-    await queuePendingAttempt(clueKey, timestamp, correct);
+    await queuePendingAttempt(clueKey, timestamp, correct, grade, hintsUsed);
   }
 
   // Return local stats
