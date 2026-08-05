@@ -814,6 +814,10 @@
           puzzleInfo.markedComplete = newStatus;
         }
 
+        // Marking a puzzle (in)complete changes remaining-work totals — refresh
+        // the header strip so its numbers stay in sync.
+        if (window.HeaderStats) window.HeaderStats.fetchAndRender();
+
         // Re-render nav and clues
         updateNav();
         loadClues(date);

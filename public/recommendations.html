@@ -345,6 +345,9 @@
 
         if (!res.ok) throw new Error('Failed to mark complete');
 
+        // Completing a puzzle changes remaining-work totals — refresh the strip.
+        if (window.HeaderStats) window.HeaderStats.fetchAndRender();
+
         // Remove the puzzle card from the page
         const card = button.closest('.puzzle-card');
         card.style.transition = 'opacity 0.3s, transform 0.3s';
