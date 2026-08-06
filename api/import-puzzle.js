@@ -42,8 +42,9 @@ async function handlePost(req, res) {
 
     const archiveData = await response.json();
 
-    // Build answer lookup from archive
+    // Build answer + grid-cell lookups from archive
     const answerLookup = buildAnswerLookup(archiveData);
+    const clueCells = buildClueCells(archiveData);
 
     // Update existing clues with answers
     let updatedCount = 0;
@@ -52,26 +53,27 @@ async function handlePost(req, res) {
     const updatedClues = existing.clues.map(clue => {
       const key = `${clue.direction}-${clue.number}`;
       const archiveAnswer = answerLookup[key];
+      if (!archiveAnswer) return clue;
 
-      if (archiveAnswer) {
-        // Only update if answer (correct answer) is missing or incomplete
-        const currentAnswer = clue.answer || '';
-        const hasCompleteAnswer = currentAnswer.length > 0
-          && currentAnswer.length === archiveAnswer.length
-          && !currentAnswer.includes('_');
+      const currentAnswer = clue.answer || '';
+      const answerComplete = currentAnswer.length > 0
+        && currentAnswer.length === archiveAnswer.length
+        && !currentAnswer.includes('_');
 
-        if (!hasCompleteAnswer) {
-          updatedCount++;
-          return {
-            ...clue,
-            answer: archiveAnswer.toUpperCase()
-            // Note: pattern stays as-is (current puzzle state with underscores)
-          };
-        } else {
-          skippedCount++;
-          return clue;
-        }
+      // For rebus clues, realign the pattern to the full answer so the quiz can
+      // check it letter-by-letter (a cell-based pattern is otherwise shorter than
+      // the multi-letter answer). Non-rebus clues keep their pattern untouched.
+      const cells = clueCells[key];
+      const pattern = hasRebus(cells)
+        ? letterAlignedPattern(clue.pattern || '', cells, archiveAnswer)
+        : clue.pattern;
+      const patternChanged = pattern !== clue.pattern;
+
+      if (!answerComplete || patternChanged) {
+        updatedCount++;
+        return { ...clue, answer: archiveAnswer.toUpperCase(), pattern };
       }
+      skippedCount++;
       return clue;
     });
 
@@ -131,6 +133,71 @@ export function expandPatternForRebus(pattern, answer) {
   return result.join('');
 }
 
+// Reconstruct, for each numbered clue, the ordered list of grid-cell strings
+// from a doshea/nyt_crosswords archive record. Each entry is normally a single
+// letter, but a rebus square holds multiple letters (e.g. "WSW"). Keyed the same
+// way as buildAnswerLookup ("across-1", "down-2"). Returns {} if the archive has
+// no grid (older records / non-standard formats) so callers can fall back.
+export function buildClueCells(archiveData) {
+  const { grid, gridnums, size } = archiveData || {};
+  if (!Array.isArray(grid) || !Array.isArray(gridnums) || !size) return {};
+  const cols = size.cols, rows = size.rows;
+  const at = (r, c) => r * cols + c;
+  const black = (v) => v === '.' || v == null;
+  const cells = {};
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const i = at(r, c);
+      if (black(grid[i])) continue;
+
+      // Across entry starts here when the cell to the left is a wall/edge and
+      // the cell to the right is open.
+      if ((c === 0 || black(grid[at(r, c - 1)])) && c + 1 < cols && !black(grid[at(r, c + 1)])) {
+        const run = [];
+        for (let cc = c; cc < cols && !black(grid[at(r, cc)]); cc++) run.push(grid[at(r, cc)]);
+        cells[`across-${gridnums[i]}`] = run;
+      }
+      // Down entry starts here when the cell above is a wall/edge and the cell
+      // below is open.
+      if ((r === 0 || black(grid[at(r - 1, c)])) && r + 1 < rows && !black(grid[at(r + 1, c)])) {
+        const run = [];
+        for (let rr = r; rr < rows && !black(grid[at(rr, c)]); rr++) run.push(grid[at(rr, c)]);
+        cells[`down-${gridnums[i]}`] = run;
+      }
+    }
+  }
+  return cells;
+}
+
+// True when a clue's cell list contains a rebus (multi-letter) square.
+export function hasRebus(cells) {
+  return Array.isArray(cells) && cells.some((x) => x && x.length > 1);
+}
+
+// Expand a cell-based pattern (one char per grid cell) into a letter-aligned
+// pattern the quiz can check letter-by-letter against the full answer. A rebus
+// cell becomes that many blanks (its multi-letter content is treated as unknown);
+// a single-cell hint letter is kept only when it actually matches the answer at
+// that position, dropping stale/incorrect captured letters. The result always has
+// the same length as the answer.
+export function letterAlignedPattern(cellPattern, cells, answer) {
+  const A = (answer || '').toUpperCase();
+  let out = '';
+  let off = 0;
+  for (let k = 0; k < cells.length; k++) {
+    const len = cells[k].length;
+    if (len > 1) {
+      out += '_'.repeat(len);
+    } else {
+      const pc = (cellPattern && cellPattern[k]) ? cellPattern[k].toUpperCase() : '_';
+      out += (pc !== '_' && pc === A[off]) ? pc : '_';
+    }
+    off += len;
+  }
+  return out;
+}
+
 export function buildAnswerLookup(archiveData) {
   const lookup = {};
   const { clues: rawClues, answers } = archiveData;
@@ -187,11 +254,13 @@ async function handleBulkImport(req, res) {
     const githubUrl = `${GITHUB_BASE}/${year}/${month}/${day}.json`;
     let answerLookup = {};
 
+    let clueCells = {};
     try {
       const response = await fetch(githubUrl);
       if (response.ok) {
         const archiveData = await response.json();
         answerLookup = buildAnswerLookup(archiveData);
+        clueCells = buildClueCells(archiveData);
       }
     } catch (e) {
       // Continue without answers if GitHub fetch fails
@@ -219,8 +288,13 @@ async function handleBulkImport(req, res) {
       const archiveAnswer = answerLookup[clueKey];
       const answer = archiveAnswer ? archiveAnswer.toUpperCase() : null;
 
-      // Expand pattern for rebus clues where answer is longer than pattern
-      if (answer && pattern && answer.length > pattern.length) {
+      // Rebus puzzles: use the archive grid to place the extra letters in the
+      // right cell(s), producing a letter-aligned pattern the quiz can check.
+      // Fall back to the length-based expansion only when we lack grid cells.
+      const cells = clueCells[clueKey];
+      if (answer && hasRebus(cells)) {
+        pattern = letterAlignedPattern(pattern, cells, answer);
+      } else if (answer && pattern && answer.length > pattern.length) {
         pattern = expandPatternForRebus(pattern, answer);
       }
 

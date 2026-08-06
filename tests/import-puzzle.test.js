@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { expandPatternForRebus, buildAnswerLookup } from '../api/import-puzzle.js';
+import {
+  expandPatternForRebus,
+  buildAnswerLookup,
+  buildClueCells,
+  hasRebus,
+  letterAlignedPattern
+} from '../api/import-puzzle.js';
 
 describe('expandPatternForRebus', () => {
   it('returns pattern unchanged when answer is same length as pattern', () => {
@@ -128,5 +134,80 @@ describe('buildAnswerLookup', () => {
     expect(() => buildAnswerLookup(archiveData)).not.toThrow();
     const lookup = buildAnswerLookup(archiveData);
     expect(lookup['across-1']).toBe('WORD');
+  });
+});
+
+describe('buildClueCells', () => {
+  it('returns {} when the archive has no grid', () => {
+    expect(buildClueCells({})).toEqual({});
+    expect(buildClueCells({ grid: null, gridnums: null, size: null })).toEqual({});
+  });
+
+  // A tiny 3x3 grid:  C A T   (1A=CAT, 1D=COT)
+  //                   O . .
+  //                   T . .
+  it('reconstructs across and down cell runs from a simple grid', () => {
+    const archive = {
+      size: { rows: 3, cols: 3 },
+      grid: ['C', 'A', 'T', 'O', '.', '.', 'T', '.', '.'],
+      gridnums: [1, 2, 3, 4, 0, 0, 5, 0, 0]
+    };
+    const cells = buildClueCells(archive);
+    expect(cells['across-1']).toEqual(['C', 'A', 'T']);
+    expect(cells['down-1']).toEqual(['C', 'O', 'T']);
+  });
+
+  it('captures a rebus square as a multi-letter cell', () => {
+    // Row 0: D O [WSW] N   -> across answer DOWSWN spelling DO+WSW+N... use DOWNWARD-like
+    // Simple: "H O [WSW]" across = HOWSW
+    const archive = {
+      size: { rows: 1, cols: 3 },
+      grid: ['H', 'O', 'WSW'],
+      gridnums: [1, 2, 3]
+    };
+    const cells = buildClueCells(archive);
+    expect(cells['across-1']).toEqual(['H', 'O', 'WSW']);
+  });
+});
+
+describe('hasRebus', () => {
+  it('is true only when a cell holds more than one letter', () => {
+    expect(hasRebus(['H', 'O', 'WSW', 'E'])).toBe(true);
+    expect(hasRebus(['C', 'A', 'T'])).toBe(false);
+    expect(hasRebus(undefined)).toBe(false);
+    expect(hasRebus([])).toBe(false);
+  });
+});
+
+describe('letterAlignedPattern', () => {
+  it('expands a mid-word rebus cell to blanks, keeping surrounding hints', () => {
+    // "Boxing the Compass" 26A: HO·[WSW]·EETITIS, captured cell-pattern HO_EETITIS
+    const cells = ['H', 'O', 'WSW', 'E', 'E', 'T', 'I', 'T', 'I', 'S'];
+    const result = letterAlignedPattern('HO_EETITIS', cells, 'HOWSWEETITIS');
+    expect(result).toBe('HO___EETITIS');
+    expect(result.length).toBe('HOWSWEETITIS'.length);
+  });
+
+  it('produces a pattern whose blanks line up with the rebus letters', () => {
+    const cells = ['J', 'A', 'NNW', 'E', 'N', 'N', 'E', 'R'];
+    const result = letterAlignedPattern('_A_____R', cells, 'JANNWENNER');
+    expect(result).toBe('_A_______R');
+    // Only the given A and R survive as hints; both align to the answer.
+    expect(result[1]).toBe('A');
+    expect(result[result.length - 1]).toBe('R');
+  });
+
+  it('drops a captured hint letter that disagrees with the answer', () => {
+    // 110D: answer PLAINNESS, captured PLAI_ST — the trailing T is wrong (should be S)
+    const cells = ['P', 'L', 'A', 'I', 'NNE', 'S', 'S'];
+    const result = letterAlignedPattern('PLAI_ST', cells, 'PLAINNESS');
+    expect(result).toBe('PLAI___S_');
+    expect(result.length).toBe('PLAINNESS'.length);
+  });
+
+  it('is a faithful passthrough for a non-rebus clue', () => {
+    const cells = ['C', 'A', 'T'];
+    expect(letterAlignedPattern('C__', cells, 'CAT')).toBe('C__');
+    expect(letterAlignedPattern('CA_', cells, 'CAT')).toBe('CA_');
   });
 });
