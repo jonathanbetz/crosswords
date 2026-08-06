@@ -561,12 +561,17 @@ function selectNextSessionClue() {
   return pool[0];
 }
 
-function recordSessionAttempt(sessionClue, allCorrect) {
+// A clue only advances toward retirement on a genuinely-correct answer:
+// all letters right AND no hint used. A hint-assisted answer (allCorrect but
+// hintUsed) counts the same as a miss here — it re-queues the clue soon and
+// does not increment correctCount — so a clue can't retire without the user
+// actually recalling it unaided.
+function recordSessionAttempt(sessionClue, countAsCorrect) {
   if (!activeSession || !sessionClue) return;
 
   activeSession.totalAttempts++;
 
-  if (allCorrect) {
+  if (countAsCorrect) {
     sessionClue.correctCount++;
     sessionClue.nextEligibleAt = activeSession.totalAttempts + SESSION_SPACING;
     if (sessionClue.correctCount >= SESSION_CORRECT_REQUIRED) {
@@ -1356,7 +1361,9 @@ async function checkAnswer() {
   displayClueStats(stats);
 
   if (activeSession && currentSessionClue) {
-    recordSessionAttempt(currentSessionClue, allCorrect);
+    // Retirement counts only unaided correct answers, matching countAsCorrect
+    // (streak/stats) — a hint-assisted answer must not retire the clue.
+    recordSessionAttempt(currentSessionClue, countAsCorrect);
   }
 
   // Auto-advance after 1 second (only if correct)
